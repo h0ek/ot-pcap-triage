@@ -22,7 +22,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y tshark graphviz p7zip-full
+          sudo apt-get install -y tshark wireshark-common graphviz p7zip-full
 
       - name: Install package
         run: |
@@ -33,7 +33,7 @@ jobs:
         run: |
           python -m compileall src
 
-      - name: CLI help
+      - name: CLI checks
         run: |
           ot-pcap-triage --help
           ot-pcap-triage --check-deps
