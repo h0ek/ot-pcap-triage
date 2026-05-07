@@ -1,0 +1,62 @@
+cat > .gitignore <<'EOF'
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Virtualenvs
+.venv/
+venv/
+env/
+ENV/
+.virtualenv/
+*.egg-info/
+.eggs/
+
+# Build / packaging
+build/
+dist/
+*.egg
+pip-wheel-metadata/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Local outputs
+output/
+ot_pcap_triage_output_*/
+*.log
+
+# PCAP / captures / sensitive data
+*.pcap
+*.pcapng
+*.cap
+*.etl
+*.erf
+*.7z
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+SHA256SUMS.txt
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.code-workspace
+
+# Temporary patch/dev files
+dev_patch_*.py
+tmp.txt
+EOF

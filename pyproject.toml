@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ot-pcap-triage"
+version = "0.3.8"
+description = "Offline passive OT PCAP triage helper using tshark."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Hoek" }
+]
+keywords = ["ot", "ics", "pcap", "tshark", "wireshark", "security", "scada"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+  "Topic :: System :: Networking :: Monitoring"
+]
+dependencies = [
+  "PyYAML>=6.0",
+  "Jinja2>=3.1",
+  "matplotlib>=3.8",
+  "graphviz>=0.20"
+]
+
+[project.urls]
+Homepage = "https://github.com/h0ek/ot-pcap-traige"
+Source = "https://github.com/h0ek/ot-pcap-traige"
+Issues = "https://github.com/h0ek/ot-pcap-traige/issues"
+
+[project.scripts]
+ot-pcap-triage = "ot_pcap_triage.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ot_pcap_triage = ["templates/*.j2", "*.yml"]

@@ -1,0 +1,332 @@
+# OT Passive Network Security Assessment — Triage Report
+
+## PCAP Summary
+
+| Field | Value |
+|---|---|
+| File | {{ summary.pcap.file }} |
+| SHA256 | `{{ summary.pcap.sha256 }}` |
+| First packet | {{ summary.pcap.first_packet_time }} |
+| Last packet | {{ summary.pcap.last_packet_time }} |
+| Duration | {{ summary.pcap.duration_human }} |
+| Frames | {{ summary.pcap.frames }} |
+| Bytes | {{ summary.pcap.bytes }} |
+| Metadata provided | {{ summary.metadata_provided }} |
+| Analysis runtime | {{ summary.analysis_runtime_human | default("Unknown") }} |
+| VLANs | {{ summary.vlans | join(", ") }} |
+
+{% if summary.baseline_mode_notice %}
+## Baseline Mode Notice
+
+{{ summary.baseline_mode_notice }}
+{% endif %}
+
+{% if summary.metadata_summary %}
+## Provided Metadata Summary
+
+| Field | Value |
+|---|---|
+| Plant | {{ summary.metadata_summary.plant }} |
+| Area | {{ summary.metadata_summary.area }} |
+| Criticality | {{ summary.metadata_summary.criticality }} |
+| Switch | {{ summary.metadata_summary.switch_name }} |
+| Mirror source | {{ summary.metadata_summary.mirror_source }} |
+| Mirror source type | {{ summary.metadata_summary.mirror_source_type }} |
+| Mirror direction | {{ summary.metadata_summary.mirror_direction }} |
+| Normal production | {{ summary.metadata_summary.normal_production }} |
+| Special activity | {{ summary.metadata_summary.special_activity }} |
+{% endif %}
+
+
+## NIST SP 800-82r3 Review Context
+
+This section maps observed traffic findings to NIST SP 800-82r3 review themes. It is guidance context only, not a compliance certification.
+
+{% if summary.nist_review_context %}
+| Theme | Related observations | Why it matters | Source |
+|---|---|---|---|
+{% for item in summary.nist_review_context %}
+| {{ item.title }} / {{ item.themes }} | {{ item.related_observations }} | {{ item.why_it_matters }} | [{{ item.source }}]({{ nist_doi_url }}) |
+{% endfor %}
+{% else %}
+No NIST review context generated.
+{% endif %}
+
+
+## MITRE ATT&CK for ICS Review Context
+
+This section maps observed traffic findings to related MITRE ATT&CK for ICS techniques to consider. It is context only and not proof of adversary activity.
+
+{% if summary.mitre_ics_context %}
+| Context | Matched observations | Related techniques | Confidence | Note |
+|---|---|---|---|---|
+{% for item in summary.mitre_ics_context %}
+| {{ item.title }} | {{ item.matched_observations }} | {{ item.technique_summary }} | {{ item.confidence }} | {{ item.note }} |
+{% endfor %}
+{% else %}
+No MITRE ATT&CK for ICS context generated.
+{% endif %}
+
+## Top Risky Observations
+
+{% if summary.top_risky_observations %}
+| ID | Severity | Confidence | Status | Observation |
+|---|---|---|---|---|
+{% for item in summary.top_risky_observations %}
+| {{ item.id }} | {{ item.severity }} | {{ item.confidence }} | {{ item.status }} | {{ item.title }} |
+{% endfor %}
+{% else %}
+No risky observations generated.
+{% endif %}
+
+## Observed Industrial Protocols
+
+{% if summary.observed_industrial_protocols %}
+| ID | Protocol | Count | Volume | Confidence | Filter |
+|---|---|---:|---|---|---|
+{% for item in summary.observed_industrial_protocols %}
+| {{ item.id }} | {{ item.title }} | {{ item.count }} | {{ item.volume }} | {{ item.confidence }} | `{{ item.filter }}` |
+{% endfor %}
+{% else %}
+No industrial protocol rules matched.
+{% endif %}
+
+{% if summary.top_s7_communications %}
+### Top S7/COTP Communication Paths
+
+| Client | PLC / S7 endpoint | Packets | Bytes |
+|---|---|---:|---:|
+{% for row in summary.top_s7_communications %}
+| {{ row.client }} | {{ row.plc }} | {{ row.packets }} | {{ row.bytes }} |
+{% endfor %}
+{% endif %}
+
+
+
+## Extended Protocol Candidates
+
+{% if summary.extended_protocol_candidates %}
+| Protocol | Category | Port | Packets | Confidence | Sources | Destinations | Note |
+|---|---|---|---:|---|---|---|---|
+{% for item in summary.extended_protocol_candidates %}
+| {{ item.name }} | {{ item.category }} | {{ item.port }} | {{ item.packets }} | {{ item.confidence }} | {{ item.sample_sources }} | {{ item.sample_destinations }} | {{ item.note }} |
+{% endfor %}
+{% else %}
+No extended protocol catalog candidates generated.
+{% endif %}
+
+
+
+## Communication Graph
+
+{% if summary.graphs and summary.graphs.communication_graph %}
+- Static Graphviz overview of the top communication paths.
+- Nodes: {{ summary.graphs.communication_nodes or 'n/a' }}
+- Edges: {{ summary.graphs.communication_edges or 'n/a' }}
+- Grouping: subnet clusters + short inferred roles.
+
+![Communication Graph]({{ summary.graphs.communication_graph }})
+{% else %}
+No communication graph generated.
+{% endif %}
+
+## Industrial / Risk Communication Graph
+
+{% if summary.graphs and summary.graphs.industrial_risk_graph %}
+- Focused Graphviz view of industrial, external or otherwise high-interest communication paths.
+- Nodes: {{ summary.graphs.industrial_risk_nodes or 'n/a' }}
+- Edges: {{ summary.graphs.industrial_risk_edges or 'n/a' }}
+
+![Industrial / Risk Communication Graph]({{ summary.graphs.industrial_risk_graph }})
+{% else %}
+No industrial / risk communication graph generated.
+{% endif %}
+
+## Industrial Protocol Graph
+
+{% if summary.graphs and summary.graphs.industrial_protocol_graph %}
+- Graphviz view focused only on industrial protocol conversations.
+- Nodes: {{ summary.graphs.industrial_protocol_nodes or 'n/a' }}
+- Edges: {{ summary.graphs.industrial_protocol_edges or 'n/a' }}
+
+![Industrial Protocol Graph]({{ summary.graphs.industrial_protocol_graph }})
+{% else %}
+No industrial protocol graph generated.
+{% endif %}
+
+
+## External Communication Graph
+
+{% if summary.graphs and summary.graphs.external_communication_graph %}
+- Graphviz view focused only on conversations marked as external/public communication.
+- Nodes: {{ summary.graphs.external_communication_nodes or 'n/a' }}
+- Edges: {{ summary.graphs.external_communication_edges or 'n/a' }}
+- Top-N: {{ summary.graphs.graph_top_n or 'n/a' }}
+
+![External Communication Graph]({{ summary.graphs.external_communication_graph }})
+{% else %}
+No external communication graph generated.
+{% endif %}
+
+## Graph Legend
+
+- Node colors:
+  - yellow = PLC / controller / primary OT endpoint
+  - purple = engineering / HMI / SCADA / scanner-like endpoint
+  - light blue = infrastructure service participant such as DNS / NTP
+  - red = public / external endpoint
+  - pale blue = other internal endpoint
+- Edge colors:
+  - brown = industrial protocol
+  - blue = DNS
+  - teal = NTP
+  - purple = VPN / remote access
+  - green = management / web / remote administration
+  - gray = ICMP
+  - dark gray = other / unknown
+- Cluster boxes group endpoints by subnet or by external/public scope.
+
+## Passive Asset Inventory
+
+{% if summary.passive_asset_inventory %}
+| IP | Possible roles | Packets | Bytes | Peers | Top protocols |
+|---|---|---:|---:|---:|---|
+{% for item in summary.passive_asset_inventory[:25] %}
+| {{ item.ip }} | {{ item.roles }} | {{ item.packets }} | {{ item.bytes }} | {{ item.peer_count }} | {{ item.top_protocols }} |
+{% endfor %}
+{% else %}
+No passive asset inventory generated.
+{% endif %}
+
+## Cleartext Management Surface
+
+{% if summary.cleartext_management_surface %}
+| Host | Protocol/Port | Risk | Packets | Clients |
+|---|---|---|---:|---|
+{% for item in summary.cleartext_management_surface %}
+| {{ item.host }} | {{ item.protocol }} | {{ item.risk }} | {{ item.packets }} | {{ item.clients }} |
+{% endfor %}
+{% else %}
+No cleartext management surface detected.
+{% endif %}
+
+## IT/OT Convergence Indicators
+
+{% if summary.convergence_indicators %}
+| Indicator | Evidence | Risk / Review point |
+|---|---|---|
+{% for item in summary.convergence_indicators %}
+| {{ item.indicator }} | {{ item.evidence }} | {{ item.risk }} |
+{% endfor %}
+{% else %}
+No convergence indicators generated.
+{% endif %}
+
+## Engineering / Scanner Candidates
+
+{% if summary.engineering_candidates %}
+| Host | Assessment | Industrial targets | Protocols | Management protocols | Packets | Confidence |
+|---|---|---|---|---|---:|---|
+{% for item in summary.engineering_candidates %}
+| {{ item.host }} | {{ item.assessment }} | {{ item.industrial_target_count }} — {{ item.industrial_targets }} | {{ item.industrial_protocols }} | {{ item.management_protocols }} | {{ item.packets }} | {{ item.confidence }} |
+{% endfor %}
+{% else %}
+No engineering/scanner candidates generated.
+{% endif %}
+
+## Analyst Questions
+
+{% if summary.analyst_questions %}
+{% for question in summary.analyst_questions %}
+- {{ question }}
+{% endfor %}
+{% else %}
+No analyst questions generated.
+{% endif %}
+
+## Capture Quality Notes
+
+{% if summary.capture_quality.notes %}
+{% for note in summary.capture_quality.notes %}
+- {{ note }}
+{% endfor %}
+{% else %}
+No major capture quality notes generated by MVP rules.
+{% endif %}
+
+## Finding Candidates
+
+{% if findings %}
+| ID | Severity | Confidence | Status | Title | Filter |
+|---|---|---|---|---|---|
+{% for f in findings %}
+| {{ f.id }} | {{ f.severity }} | {{ f.confidence }} | {{ f.status }} | {{ f.title }} | `{{ f.wireshark_filter }}` |
+{% endfor %}
+
+{% for f in findings %}
+### {{ f.id }} — {{ f.title }}
+
+- Severity: {{ f.severity }}
+- Confidence: {{ f.confidence }}
+- Status: {{ f.status }}
+- Reason: {{ f.reason }}
+- Recommendation: {{ f.recommendation }}
+- Wireshark filter: `{{ f.wireshark_filter }}`
+
+Evidence:
+{% for e in f.evidence[:10] %}
+- Frame: {{ e.frame_number or "n/a" }}, {{ e.protocol }}, {{ e.src_ip }}:{{ e.src_port }} → {{ e.dst_ip }}:{{ e.dst_port }}, {{ e.timestamp }}
+{% endfor %}
+
+{% endfor %}
+{% else %}
+No finding candidates generated.
+{% endif %}
+
+
+## Traffic Timeline
+
+{% if summary.traffic_timeline and summary.traffic_timeline.chart_file %}
+- Bucket size: {{ summary.traffic_timeline.bucket_human }}
+- Range: {{ summary.pcap.first_packet_time }} - {{ summary.pcap.last_packet_time }}
+- Dominant protocol group: {{ summary.traffic_timeline.dominant_protocol }}
+- Bursts detected: {{ 'yes' if summary.traffic_timeline.bursts_detected else 'no' }}
+
+![Traffic Timeline]({{ summary.traffic_timeline.chart_file }})
+{% else %}
+No traffic timeline generated.
+{% endif %}
+
+## Top Endpoints
+
+| IP | MACs | Packets | Bytes | Public | Top protocols |
+|---|---|---:|---:|---|---|
+{% for e in summary.endpoints[:50] %}
+| {{ e.ip }} | {{ e.macs }} | {{ e.packets }} | {{ e.bytes }} | {{ e.public }} | {{ e.top_protocols }} |
+{% endfor %}
+
+## Top Conversations
+
+| Source | Destination | Protocol | Packets | Bytes | External |
+|---|---|---|---:|---:|---|
+{% for c in summary.conversations[:50] %}
+| {{ c.src_ip }}:{{ c.src_port }} | {{ c.dst_ip }}:{{ c.dst_port }} | {{ c.protocol }} | {{ c.packets }} | {{ c.bytes }} | {{ c.external }} |
+{% endfor %}
+
+## Rule Results
+
+| ID | Title | Group | Count | Filter |
+|---|---|---|---:|---|
+{% for r in summary.rule_results %}
+| {{ r.id }} | {{ r.title }} | {{ r.group }} | {{ r.count }} | `{{ r.filter }}` |
+{% endfor %}
+
+## Protocol Hierarchy Raw
+
+```text
+{{ protocol_hierarchy_raw }}
+```
+
+---
+
+Report generated by **ot-pcap-triage** tool. Source: <https://github.com/h0ek/ot-pcap-traige>.

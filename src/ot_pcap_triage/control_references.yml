@@ -1,0 +1,86 @@
+# NIST SP 800-82r3 review context mapping
+#
+# This file provides report context only.
+# It is not a compliance checklist and does not certify alignment.
+
+references:
+  external_communication:
+    source: "NIST SP 800-82r3"
+    title: "Restrict logical access and external connectivity"
+    themes:
+      - "Network segmentation"
+      - "Boundary protection"
+      - "DMZ / firewall architecture"
+      - "Approved external communication paths"
+    why_it_matters: "OT assets should not communicate directly with external networks unless the path is approved, controlled, monitored, and segmented."
+
+  public_dns_ntp:
+    source: "NIST SP 800-82r3"
+    title: "Use controlled infrastructure services"
+    themes:
+      - "Time synchronization"
+      - "Name resolution"
+      - "Boundary protection"
+      - "Monitoring"
+    why_it_matters: "Public DNS/NTP from OT may indicate weak segmentation or unmanaged dependencies. OT environments should normally use approved internal infrastructure services."
+
+  remote_access:
+    source: "NIST SP 800-82r3"
+    title: "Control and monitor remote access"
+    themes:
+      - "Remote access"
+      - "Multi-factor authentication"
+      - "Jump hosts / approved paths"
+      - "Logging and monitoring"
+    why_it_matters: "Remote access paths into OT should be explicit, restricted, authenticated, logged, and approved by OT/network owners."
+
+  plaintext_protocols:
+    source: "NIST SP 800-82r3"
+    title: "Avoid or tightly restrict plaintext protocols"
+    themes:
+      - "Secure protocols"
+      - "Credential protection"
+      - "Data in transit"
+      - "Disable unused services"
+    why_it_matters: "Plaintext protocols can expose credentials, management sessions, operational data, or configuration details to anyone with network visibility."
+
+  monitoring_anomalies:
+    source: "NIST SP 800-82r3"
+    title: "Detect events and anomalous activity"
+    themes:
+      - "Security continuous monitoring"
+      - "Anomalies and events"
+      - "Logging"
+      - "Incident detection"
+    why_it_matters: "Connection failures, resets, unreachable traffic, unusual bursts, and scan-like behavior should be reviewed against expected OT communication patterns."
+
+  industrial_protocols:
+    source: "NIST SP 800-82r3"
+    title: "Validate OT protocol security and expected communication"
+    themes:
+      - "OT protocol security"
+      - "Authentication and integrity"
+      - "Allowed talkers"
+      - "Segmentation"
+      - "Engineering access control"
+    why_it_matters: "Many OT protocols require compensating controls such as segmentation, allowlists, monitoring, and strict control of engineering access."
+
+  asset_inventory:
+    source: "NIST SP 800-82r3"
+    title: "Maintain and validate OT asset inventory"
+    themes:
+      - "Asset management"
+      - "Passive discovery"
+      - "Expected architecture"
+      - "Risk-based assessment"
+    why_it_matters: "Passive inventory is useful for discovery, but inferred roles must be validated against the authoritative OT asset inventory."
+
+  convergence:
+    source: "NIST SP 800-82r3"
+    title: "Review IT/OT convergence and segmentation"
+    themes:
+      - "Defense-in-depth"
+      - "Layered network architecture"
+      - "Corporate/OT separation"
+      - "DMZ and boundary controls"
+    why_it_matters: "Multiple subnets, direct client-to-controller paths, and external dependencies may indicate convergence points that need architectural validation."

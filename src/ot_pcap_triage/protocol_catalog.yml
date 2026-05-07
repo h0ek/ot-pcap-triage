@@ -1,0 +1,169 @@
+# ot-pcap-triage protocol catalog
+#
+# This catalog is used for enrichment only.
+# Port-based matches are protocol candidates, not confirmed findings.
+
+protocols:
+  ads:
+    name: "Beckhoff ADS"
+    ports:
+      - "48898/tcp"
+    category: "industrial"
+    confidence: "medium"
+    note: "Beckhoff/TwinCAT communication"
+
+  ansi_c1222:
+    name: "ANSI C12.22"
+    ports:
+      - "1153/tcp"
+      - "1153/udp"
+    category: "utility"
+    confidence: "medium"
+    note: "Smart grid / meter communication"
+
+  artnet:
+    name: "Art-Net"
+    ports:
+      - "6454/udp"
+    category: "building/lighting"
+    confidence: "medium"
+    note: "Lighting/DMX over Ethernet"
+
+  atg_veeder_root:
+    name: "ATG / Veeder Root"
+    ports:
+      - "10001/tcp"
+    category: "fuel/gas"
+    confidence: "medium"
+    note: "Automatic Tank Gauge protocol"
+
+  bacnet:
+    name: "BACnet/IP"
+    ports:
+      - "47808/udp"
+    category: "building automation"
+    confidence: "medium"
+    note: "HVAC/BMS/building automation"
+
+  bsap:
+    name: "BSAP"
+    ports:
+      - "1234/udp"
+    category: "industrial"
+    confidence: "medium"
+    note: "Emerson Bristol protocol"
+
+  codesys:
+    name: "CODESYS"
+    ports:
+      - "11740/tcp"
+      - "11740/udp"
+      - "1740/tcp"
+      - "1740/udp"
+    category: "industrial"
+    confidence: "medium"
+    note: "CODESYS runtime/gateway related traffic"
+
+  dnp3:
+    name: "DNP3"
+    ports:
+      - "20000/tcp"
+      - "20000/udp"
+    category: "utility"
+    confidence: "medium"
+    note: "Telemetry/control protocol used in utilities"
+
+  ethernet_ip:
+    name: "EtherNet/IP / CIP"
+    ports:
+      - "44818/tcp"
+      - "44818/udp"
+      - "2222/udp"
+    category: "industrial"
+    confidence: "medium"
+    note: "Rockwell/CIP industrial protocol"
+
+  fox:
+    name: "Niagara Fox"
+    ports:
+      - "1911/tcp"
+      - "4911/tcp"
+    category: "building automation"
+    confidence: "medium"
+    note: "Niagara building automation"
+
+  hart_ip:
+    name: "HART-IP"
+    ports:
+      - "5094/tcp"
+      - "5094/udp"
+    category: "instrumentation"
+    confidence: "medium"
+    note: "Instrumentation / asset management"
+
+  iec104:
+    name: "IEC 60870-5-104"
+    ports:
+      - "2404/tcp"
+    category: "utility"
+    confidence: "medium"
+    note: "Telecontrol/energy"
+
+  knxnet_ip:
+    name: "KNXnet/IP"
+    ports:
+      - "3671/udp"
+    category: "building automation"
+    confidence: "medium"
+    note: "KNX building automation"
+
+  modbus:
+    name: "Modbus TCP"
+    ports:
+      - "502/tcp"
+    category: "industrial"
+    confidence: "medium"
+    note: "PLC/RTU communication"
+
+  opcua:
+    name: "OPC UA"
+    ports:
+      - "4840/tcp"
+    category: "industrial integration"
+    confidence: "medium"
+    note: "SCADA/MES/historian integration"
+
+  s7:
+    name: "Siemens S7 / ISO-on-TCP"
+    ports:
+      - "102/tcp"
+    category: "industrial"
+    confidence: "medium"
+    note: "Siemens PLC communication"
+
+  slmp:
+    name: "Mitsubishi SLMP / MC"
+    ports:
+      - "5000/tcp"
+      - "5000/udp"
+      - "5001/tcp"
+      - "5001/udp"
+    category: "industrial"
+    confidence: "medium"
+    note: "Mitsubishi PLC communication"
+
+  triton_tristation:
+    name: "TriStation"
+    ports: []
+    category: "safety"
+    confidence: "low"
+    note: "Triton/Triconex safety controller protocol; port may vary"
+
+  wago_io_check:
+    name: "WAGO / CODESYS related service candidate"
+    ports:
+      - "2455/tcp"
+      - "2455/udp"
+    category: "industrial"
+    confidence: "low"
+    note: "Vendor/service-specific traffic; validate before reporting"

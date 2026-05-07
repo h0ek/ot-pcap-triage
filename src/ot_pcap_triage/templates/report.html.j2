@@ -1,0 +1,453 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ot-pcap-triage report - {{ summary.pcap.file }}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 32px; line-height: 1.45; color: #222; }
+    h1, h2, h3 { margin-top: 1.5em; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0 24px; font-size: 14px; }
+    th, td { border: 1px solid #ddd; padding: 7px 9px; vertical-align: top; }
+    th { background: #f4f4f4; text-align: left; }
+    code, pre { background: #f7f7f7; padding: 2px 4px; border-radius: 4px; }
+    pre { padding: 12px; overflow-x: auto; }
+    a { color: #2452a3; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .footer { color: #777; font-size: 12px; margin-top: 42px; border-top: 1px solid #ddd; padding-top: 12px; }
+    .sev-critical { background: #ffe0e0; }
+    .sev-high { background: #ffe9d6; }
+    .sev-medium { background: #fff6cf; }
+    .sev-low { background: #edf5ff; }
+    .sev-info { background: #f2f2f2; }
+    .small { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>OT Passive Network Security Assessment — Triage Report</h1>
+
+  <h2>PCAP Summary</h2>
+  <table>
+    <tr><th>File</th><td>{{ summary.pcap.file }}</td></tr>
+    <tr><th>SHA256</th><td><code>{{ summary.pcap.sha256 }}</code></td></tr>
+    <tr><th>First packet</th><td>{{ summary.pcap.first_packet_time }}</td></tr>
+    <tr><th>Last packet</th><td>{{ summary.pcap.last_packet_time }}</td></tr>
+    <tr><th>Duration</th><td>{{ summary.pcap.duration_human }}</td></tr>
+    <tr><th>Frames</th><td>{{ summary.pcap.frames }}</td></tr>
+    <tr><th>Bytes</th><td>{{ summary.pcap.bytes }}</td></tr>
+    <tr><th>Metadata provided</th><td>{{ summary.metadata_provided }}</td></tr>
+    <tr><th>Analysis runtime</th><td>{{ summary.analysis_runtime_human | default("Unknown") }}</td></tr>
+    <tr><th>VLANs</th><td>{{ summary.vlans | join(", ") }}</td></tr>
+  </table>
+
+  {% if summary.baseline_mode_notice %}
+  <h2>Baseline Mode Notice</h2>
+  <p>{{ summary.baseline_mode_notice }}</p>
+  {% endif %}
+
+  {% if summary.metadata_summary %}
+  <h2>Provided Metadata Summary</h2>
+  <table>
+    <tr><th>Plant</th><td>{{ summary.metadata_summary.plant }}</td></tr>
+    <tr><th>Area</th><td>{{ summary.metadata_summary.area }}</td></tr>
+    <tr><th>Criticality</th><td>{{ summary.metadata_summary.criticality }}</td></tr>
+    <tr><th>Switch</th><td>{{ summary.metadata_summary.switch_name }}</td></tr>
+    <tr><th>Mirror source</th><td>{{ summary.metadata_summary.mirror_source }}</td></tr>
+    <tr><th>Mirror source type</th><td>{{ summary.metadata_summary.mirror_source_type }}</td></tr>
+    <tr><th>Mirror direction</th><td>{{ summary.metadata_summary.mirror_direction }}</td></tr>
+    <tr><th>Normal production</th><td>{{ summary.metadata_summary.normal_production }}</td></tr>
+    <tr><th>Special activity</th><td>{{ summary.metadata_summary.special_activity }}</td></tr>
+  </table>
+  {% endif %}
+
+
+  <h2>NIST SP 800-82r3 Review Context</h2>
+  {% if summary.nist_review_context %}
+  <p class="small">This section maps observed traffic findings to NIST SP 800-82r3 review themes. It is guidance context only, not a compliance certification.</p>
+  <table>
+    <tr><th>Theme</th><th>Related observations</th><th>Why it matters</th><th>Source</th></tr>
+    {% for item in summary.nist_review_context %}
+    <tr>
+      <td><strong>{{ item.title }}</strong><br><span class="small">{{ item.themes }}</span></td>
+      <td>{{ item.related_observations }}</td>
+      <td>{{ item.why_it_matters }}</td>
+      <td><a href="{{ nist_doi_url }}">{{ item.source }}</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No NIST review context generated.</p>
+  {% endif %}
+
+
+  <h2>MITRE ATT&CK for ICS Review Context</h2>
+  {% if summary.mitre_ics_context %}
+  <p class="small">This section maps observed traffic findings to related MITRE ATT&CK for ICS techniques to consider. It is context only and not proof of adversary activity.</p>
+  <table>
+    <tr><th>Context</th><th>Matched observations</th><th>Related techniques</th><th>Confidence</th><th>Note</th></tr>
+    {% for item in summary.mitre_ics_context %}
+    <tr>
+      <td><strong>{{ item.title }}</strong></td>
+      <td>{{ item.matched_observations }}</td>
+      <td>
+        {% for tech in item.techniques %}
+          {% if tech.url %}<a href="{{ tech.url }}">{{ tech.id }} {{ tech.name }}</a>{% else %}{{ tech.id }} {{ tech.name }}{% endif %}
+          <span class="small">({{ tech.tactic }})</span><br>
+        {% endfor %}
+      </td>
+      <td>{{ item.confidence }}</td>
+      <td>{{ item.note }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No MITRE ATT&CK for ICS context generated.</p>
+  {% endif %}
+
+  <h2>Top Risky Observations</h2>
+  {% if summary.top_risky_observations %}
+  <table>
+    <tr><th>ID</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Observation</th><th>Reason</th></tr>
+    {% for item in summary.top_risky_observations %}
+    <tr class="sev-{{ item.severity }}">
+      <td>{{ item.id }}</td>
+      <td>{{ item.severity }}</td>
+      <td>{{ item.confidence }}</td>
+      <td>{{ item.status }}</td>
+      <td>{{ item.title }}</td>
+      <td>{{ item.reason }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No risky observations generated.</p>
+  {% endif %}
+
+  <h2>Observed Industrial Protocols</h2>
+  {% if summary.observed_industrial_protocols %}
+  <table>
+    <tr><th>ID</th><th>Protocol</th><th>Count</th><th>Volume</th><th>Confidence</th><th>Filter</th></tr>
+    {% for item in summary.observed_industrial_protocols %}
+    <tr>
+      <td>{{ item.id }}</td>
+      <td>{{ item.title }}</td>
+      <td>{{ item.count }}</td>
+      <td>{{ item.volume }}</td>
+      <td>{{ item.confidence }}</td>
+      <td><code>{{ item.filter }}</code></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No industrial protocol rules matched.</p>
+  {% endif %}
+
+  {% if summary.top_s7_communications %}
+  <h3>Top S7/COTP Communication Paths</h3>
+  <table>
+    <tr><th>Client</th><th>PLC / S7 endpoint</th><th>Packets</th><th>Bytes</th></tr>
+    {% for row in summary.top_s7_communications %}
+    <tr>
+      <td>{{ row.client }}</td>
+      <td>{{ row.plc }}</td>
+      <td>{{ row.packets }}</td>
+      <td>{{ row.bytes }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+
+
+  <h2>Extended Protocol Candidates</h2>
+  {% if summary.extended_protocol_candidates %}
+  <table>
+    <tr><th>Protocol</th><th>Category</th><th>Port</th><th>Packets</th><th>Confidence</th><th>Sources</th><th>Destinations</th><th>Note</th></tr>
+    {% for item in summary.extended_protocol_candidates %}
+    <tr>
+      <td>{{ item.name }}</td>
+      <td>{{ item.category }}</td>
+      <td>{{ item.port }}</td>
+      <td>{{ item.packets }}</td>
+      <td>{{ item.confidence }}</td>
+      <td>{{ item.sample_sources }}</td>
+      <td>{{ item.sample_destinations }}</td>
+      <td>{{ item.note }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No extended protocol catalog candidates generated.</p>
+  {% endif %}
+
+
+
+  <h2>Communication Graph</h2>
+  {% if summary.graphs and summary.graphs.communication_graph %}
+  <p class="small">
+    Static Graphviz overview of the top communication paths.
+    Nodes: {{ summary.graphs.communication_nodes or 'n/a' }} |
+    Edges: {{ summary.graphs.communication_edges or 'n/a' }} |
+    Grouping: subnet clusters + short inferred roles.
+  </p>
+  <p>
+    <img src="{{ summary.graphs.communication_graph }}" alt="Communication graph" style="max-width:100%;height:auto;border:1px solid #ddd">
+  </p>
+  {% else %}
+  <p>No communication graph generated.</p>
+  {% endif %}
+
+  <h2>Industrial / Risk Communication Graph</h2>
+  {% if summary.graphs and summary.graphs.industrial_risk_graph %}
+  <p class="small">
+    Focused Graphviz view of industrial, external or otherwise high-interest communication paths.
+    Nodes: {{ summary.graphs.industrial_risk_nodes or 'n/a' }} |
+    Edges: {{ summary.graphs.industrial_risk_edges or 'n/a' }}
+  </p>
+  <p>
+    <img src="{{ summary.graphs.industrial_risk_graph }}" alt="Industrial risk communication graph" style="max-width:100%;height:auto;border:1px solid #ddd">
+  </p>
+  {% else %}
+  <p>No industrial / risk communication graph generated.</p>
+  {% endif %}
+
+  <h2>Industrial Protocol Graph</h2>
+  {% if summary.graphs and summary.graphs.industrial_protocol_graph %}
+  <p class="small">
+    Graphviz view focused only on industrial protocol conversations.
+    Nodes: {{ summary.graphs.industrial_protocol_nodes or 'n/a' }} |
+    Edges: {{ summary.graphs.industrial_protocol_edges or 'n/a' }}
+  </p>
+  <p>
+    <img src="{{ summary.graphs.industrial_protocol_graph }}" alt="Industrial protocol graph" style="max-width:100%;height:auto;border:1px solid #ddd">
+  </p>
+  {% else %}
+  <p>No industrial protocol graph generated.</p>
+  {% endif %}
+
+
+  <h2>External Communication Graph</h2>
+  {% if summary.graphs and summary.graphs.external_communication_graph %}
+  <p class="small">
+    Graphviz view focused only on conversations marked as external/public communication.
+    Nodes: {{ summary.graphs.external_communication_nodes or 'n/a' }} |
+    Edges: {{ summary.graphs.external_communication_edges or 'n/a' }} |
+    Top-N: {{ summary.graphs.graph_top_n or 'n/a' }}
+  </p>
+  <p>
+    <img src="{{ summary.graphs.external_communication_graph }}" alt="External communication graph" style="max-width:100%;height:auto;border:1px solid #ddd">
+  </p>
+  {% else %}
+  <p>No external communication graph generated.</p>
+  {% endif %}
+
+  <h2>Graph Legend</h2>
+  <p class="small">Node background colors show inferred asset types. Edge colors show protocol families. Cluster boxes group endpoints by subnet or external/public scope.</p>
+  <table>
+    <tr><th>Type</th><th>Meaning</th></tr>
+    <tr><td><span style="display:inline-block;width:14px;height:14px;background:#fff3cd;border:1px solid #999;vertical-align:middle;"></span> node</td><td>PLC / controller / primary OT endpoint</td></tr>
+    <tr><td><span style="display:inline-block;width:14px;height:14px;background:#f5ecff;border:1px solid #999;vertical-align:middle;"></span> node</td><td>Engineering / HMI / SCADA / scanner-like endpoint</td></tr>
+    <tr><td><span style="display:inline-block;width:14px;height:14px;background:#eaf7ff;border:1px solid #999;vertical-align:middle;"></span> node</td><td>Infrastructure service participant such as DNS / NTP</td></tr>
+    <tr><td><span style="display:inline-block;width:14px;height:14px;background:#fdeaea;border:1px solid #999;vertical-align:middle;"></span> node</td><td>Public / external endpoint</td></tr>
+    <tr><td><span style="display:inline-block;width:14px;height:14px;background:#eef4ff;border:1px solid #999;vertical-align:middle;"></span> node</td><td>Other internal endpoint</td></tr>
+    <tr><td><span style="display:inline-block;width:22px;height:3px;background:#b35c00;vertical-align:middle;"></span> edge</td><td>Industrial protocol</td></tr>
+    <tr><td><span style="display:inline-block;width:22px;height:3px;background:#1f77b4;vertical-align:middle;"></span> edge</td><td>DNS</td></tr>
+    <tr><td><span style="display:inline-block;width:22px;height:3px;background:#17a2b8;vertical-align:middle;"></span> edge</td><td>NTP</td></tr>
+    <tr><td><span style="display:inline-block;width:22px;height:3px;background:#7f3fbf;vertical-align:middle;"></span> edge</td><td>VPN / remote access</td></tr>
+    <tr><td><span style="display:inline-block;width:22px;height:3px;background:#2ca02c;vertical-align:middle;"></span> edge</td><td>Management / web / remote administration</td></tr>
+    <tr><td><span style="display:inline-block;width:22px;height:3px;background:#666666;vertical-align:middle;"></span> edge</td><td>ICMP</td></tr>
+    <tr><td><span style="display:inline-block;width:22px;height:3px;background:#444444;vertical-align:middle;"></span> edge</td><td>Other / unknown</td></tr>
+  </table>
+
+  <h2>Passive Asset Inventory</h2>
+  {% if summary.passive_asset_inventory %}
+  <table>
+    <tr><th>IP</th><th>Possible roles</th><th>Packets</th><th>Bytes</th><th>Peers</th><th>Top protocols</th><th>Reason</th></tr>
+    {% for item in summary.passive_asset_inventory[:25] %}
+    <tr>
+      <td>{{ item.ip }}</td>
+      <td>{{ item.roles }}</td>
+      <td>{{ item.packets }}</td>
+      <td>{{ item.bytes }}</td>
+      <td>{{ item.peer_count }}</td>
+      <td>{{ item.top_protocols }}</td>
+      <td>{{ item.reason }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No passive asset inventory generated.</p>
+  {% endif %}
+
+  <h2>Cleartext Management Surface</h2>
+  {% if summary.cleartext_management_surface %}
+  <table>
+    <tr><th>Host</th><th>Protocol/Port</th><th>Risk</th><th>Packets</th><th>Clients</th></tr>
+    {% for item in summary.cleartext_management_surface %}
+    <tr>
+      <td>{{ item.host }}</td>
+      <td>{{ item.protocol }}</td>
+      <td>{{ item.risk }}</td>
+      <td>{{ item.packets }}</td>
+      <td>{{ item.clients }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No cleartext management surface detected.</p>
+  {% endif %}
+
+  <h2>IT/OT Convergence Indicators</h2>
+  {% if summary.convergence_indicators %}
+  <table>
+    <tr><th>Indicator</th><th>Evidence</th><th>Risk / Review point</th></tr>
+    {% for item in summary.convergence_indicators %}
+    <tr>
+      <td>{{ item.indicator }}</td>
+      <td>{{ item.evidence }}</td>
+      <td>{{ item.risk }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No convergence indicators generated.</p>
+  {% endif %}
+
+  <h2>Engineering / Scanner Candidates</h2>
+  {% if summary.engineering_candidates %}
+  <table>
+    <tr><th>Host</th><th>Assessment</th><th>Industrial targets</th><th>Protocols</th><th>Management protocols</th><th>Packets</th><th>Confidence</th></tr>
+    {% for item in summary.engineering_candidates %}
+    <tr>
+      <td>{{ item.host }}</td>
+      <td>{{ item.assessment }}</td>
+      <td>{{ item.industrial_target_count }} — {{ item.industrial_targets }}</td>
+      <td>{{ item.industrial_protocols }}</td>
+      <td>{{ item.management_protocols }}</td>
+      <td>{{ item.packets }}</td>
+      <td>{{ item.confidence }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No engineering/scanner candidates generated.</p>
+  {% endif %}
+
+  <h2>Analyst Questions</h2>
+  {% if summary.analyst_questions %}
+  <ul>
+    {% for question in summary.analyst_questions %}
+    <li>{{ question }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No analyst questions generated.</p>
+  {% endif %}
+
+  <h2>Capture Quality Notes</h2>
+  {% if summary.capture_quality.notes %}
+  <ul>
+  {% for note in summary.capture_quality.notes %}
+    <li>{{ note }}</li>
+  {% endfor %}
+  </ul>
+  {% else %}
+  <p>No major capture quality notes generated by MVP rules.</p>
+  {% endif %}
+
+  <h2>Finding Candidates</h2>
+  {% if findings %}
+  <table>
+    <tr>
+      <th>ID</th><th>Severity</th><th>Confidence</th><th>Status</th><th>Title</th><th>Evidence</th><th>Filter</th>
+    </tr>
+    {% for f in findings %}
+    <tr class="sev-{{ f.severity }}">
+      <td>{{ f.id }}</td>
+      <td>{{ f.severity }}</td>
+      <td>{{ f.confidence }}</td>
+      <td>{{ f.status }}</td>
+      <td><strong>{{ f.title }}</strong><br><span class="small">{{ f.reason }}</span><br><br>{{ f.recommendation }}</td>
+      <td>
+        {% for e in f.evidence[:5] %}
+          Frame: {{ e.frame_number or "n/a" }}<br>
+          {{ e.protocol }} {{ e.src_ip }}:{{ e.src_port }} → {{ e.dst_ip }}:{{ e.dst_port }}<br>
+          <span class="small">{{ e.timestamp }}</span><br><br>
+        {% endfor %}
+      </td>
+      <td><code>{{ f.wireshark_filter }}</code></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No finding candidates generated.</p>
+  {% endif %}
+
+
+  <h2>Traffic Timeline</h2>
+  {% if summary.traffic_timeline and summary.traffic_timeline.chart_file %}
+  <p class="small">
+    Bucket size: {{ summary.traffic_timeline.bucket_human }} |
+    Range: {{ summary.pcap.first_packet_time }} - {{ summary.pcap.last_packet_time }} |
+    Dominant protocol group: {{ summary.traffic_timeline.dominant_protocol }} |
+    Bursts detected: {{ 'yes' if summary.traffic_timeline.bursts_detected else 'no' }}
+  </p>
+  <p>
+    <img src="{{ summary.traffic_timeline.chart_file }}" alt="Traffic timeline chart" style="max-width:100%;height:auto;border:1px solid #ddd">
+  </p>
+  {% else %}
+  <p>No traffic timeline generated.</p>
+  {% endif %}
+
+  <h2>Top Endpoints</h2>
+  <table>
+    <tr><th>IP</th><th>MACs</th><th>Packets</th><th>Bytes</th><th>Public</th><th>Top protocols</th></tr>
+    {% for e in summary.endpoints[:50] %}
+    <tr>
+      <td>{{ e.ip }}</td>
+      <td>{{ e.macs }}</td>
+      <td>{{ e.packets }}</td>
+      <td>{{ e.bytes }}</td>
+      <td>{{ e.public }}</td>
+      <td>{{ e.top_protocols }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h2>Top Conversations</h2>
+  <table>
+    <tr><th>Source</th><th>Destination</th><th>Protocol</th><th>Packets</th><th>Bytes</th><th>External</th></tr>
+    {% for c in summary.conversations[:50] %}
+    <tr>
+      <td>{{ c.src_ip }}:{{ c.src_port }}</td>
+      <td>{{ c.dst_ip }}:{{ c.dst_port }}</td>
+      <td>{{ c.protocol }}</td>
+      <td>{{ c.packets }}</td>
+      <td>{{ c.bytes }}</td>
+      <td>{{ c.external }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h2>Rule Results</h2>
+  <table>
+    <tr><th>ID</th><th>Title</th><th>Group</th><th>Count</th><th>Filter</th></tr>
+    {% for r in summary.rule_results %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.title }}</td>
+      <td>{{ r.group }}</td>
+      <td>{{ r.count }}</td>
+      <td><code>{{ r.filter }}</code></td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h2>Protocol Hierarchy Raw</h2>
+  <pre>{{ protocol_hierarchy_raw }}</pre>
+
+  <div class="footer">
+    Report generated by <strong>ot-pcap-triage</strong> tool. Source:
+    <a href="https://github.com/h0ek/ot-pcap-traige">GitHub</a>.
+  </div>
+</body>
+</html>

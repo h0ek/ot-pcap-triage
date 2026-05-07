@@ -1,0 +1,198 @@
+# MITRE ATT&CK for ICS review context mapping
+#
+# This file provides report context only.
+# It is not proof of adversary activity.
+#
+# Mapping style:
+#   observation/finding -> related ATT&CK for ICS techniques to consider
+
+mappings:
+  public_external_communication:
+    title: "External/public communication from OT"
+    observation_ids:
+      - "OT-NET-PUBLIC-IP"
+      - "OT-NET-PUBLIC-DNS"
+      - "OT-NET-PUBLIC-NTP"
+    techniques:
+      - id: "T0883"
+        name: "Internet Accessible Device"
+        tactic: "Initial Access"
+        url: "https://attack.mitre.org/techniques/T0883/"
+      - id: "T0885"
+        name: "Commonly Used Port"
+        tactic: "Command and Control"
+        url: "https://attack.mitre.org/techniques/T0885/"
+      - id: "T0869"
+        name: "Standard Application Layer Protocol"
+        tactic: "Command and Control"
+        url: "https://attack.mitre.org/techniques/T0869/"
+    confidence: "contextual"
+    note: "Public communication is not proof of adversary activity. Validate whether it is approved OT connectivity."
+
+  remote_access:
+    title: "Remote access / VPN-like traffic"
+    observation_ids:
+      - "OT-NET-VPN-TRAFFIC"
+      - "OT-NET-REMOTE-ADMIN"
+    techniques:
+      - id: "T0886"
+        name: "Remote Services"
+        tactic: "Lateral Movement"
+        url: "https://attack.mitre.org/techniques/T0886/"
+      - id: "T0866"
+        name: "Exploitation of Remote Services"
+        tactic: "Lateral Movement"
+        url: "https://attack.mitre.org/techniques/T0866/"
+    confidence: "contextual"
+    note: "Remote access traffic should be validated against approved access paths, jump hosts, MFA and logging."
+
+  discovery_noise:
+    title: "Discovery / name resolution / broadcast or multicast traffic"
+    observation_ids:
+      - "OT-NET-DISCOVERY"
+      - "OT-NET-BROADCAST-ARP"
+    techniques:
+      - id: "T0846"
+        name: "Remote System Discovery"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0846/"
+      - id: "T0846.002"
+        name: "Broadcast Discovery"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0846/002/"
+      - id: "T0846.003"
+        name: "Multicast Discovery"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0846/003/"
+    confidence: "contextual"
+    note: "Discovery protocols may be normal noise, misconfiguration, or discovery activity. Validate with expected architecture."
+
+  scan_like_activity:
+    title: "Scan-like or connection failure activity"
+    observation_ids:
+      - "OT-NET-TCP-SYN"
+      - "OT-NET-TCP-RESET"
+      - "OT-NET-ICMP-UNREACHABLE"
+    techniques:
+      - id: "T0846.001"
+        name: "Port Scan"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0846/001/"
+      - id: "T0846"
+        name: "Remote System Discovery"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0846/"
+    confidence: "contextual"
+    note: "High SYN/RST/unreachable activity may indicate scanning or broken services, but can also be normal application behavior."
+
+  remote_services_management:
+    title: "Remote administration and management protocols"
+    observation_ids:
+      - "OT-NET-REMOTE-ADMIN"
+      - "OT-NET-PLAINTEXT"
+      - "OT-NET-RSH"
+      - "OT-NET-HTTP"
+      - "OT-SENSITIVE-TELNET"
+      - "OT-SENSITIVE-FTP-PASS"
+      - "OT-SENSITIVE-HTTP-AUTH"
+      - "OT-SENSITIVE-SNMP-COMMUNITY"
+    techniques:
+      - id: "T0886"
+        name: "Remote Services"
+        tactic: "Lateral Movement"
+        url: "https://attack.mitre.org/techniques/T0886/"
+      - id: "T0869"
+        name: "Standard Application Layer Protocol"
+        tactic: "Command and Control"
+        url: "https://attack.mitre.org/techniques/T0869/"
+      - id: "T0859"
+        name: "Valid Accounts"
+        tactic: "Persistence / Privilege Escalation"
+        url: "https://attack.mitre.org/techniques/T0859/"
+    confidence: "contextual"
+    note: "Remote services and plaintext credentials are useful to adversaries, but the traffic must be validated before claiming malicious activity."
+
+  industrial_protocols:
+    title: "Industrial protocol communication"
+    observation_sections:
+      - "observed_industrial_protocols"
+      - "extended_protocol_candidates"
+    techniques:
+      - id: "T0869"
+        name: "Standard Application Layer Protocol"
+        tactic: "Command and Control"
+        url: "https://attack.mitre.org/techniques/T0869/"
+      - id: "T0885"
+        name: "Commonly Used Port"
+        tactic: "Command and Control"
+        url: "https://attack.mitre.org/techniques/T0885/"
+      - id: "T0840"
+        name: "Network Connection Enumeration"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0840/"
+    confidence: "contextual"
+    note: "Observed OT protocols should be validated against expected assets, allowed talkers and segmentation."
+
+  s7_or_controller_paths:
+    title: "Controller communication paths"
+    observation_sections:
+      - "top_s7_communications"
+      - "engineering_candidates"
+    techniques:
+      - id: "T0840"
+        name: "Network Connection Enumeration"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0840/"
+      - id: "T0848"
+        name: "Rogue Master"
+        tactic: "Command and Control"
+        url: "https://attack.mitre.org/techniques/T0848/"
+      - id: "T1692"
+        name: "Unauthorized Message"
+        tactic: "Impair Process Control"
+        url: "https://attack.mitre.org/techniques/T1692/"
+    confidence: "contextual"
+    note: "Controller traffic alone is normal in OT. Mapping indicates what to validate if an unexpected controller client or master is observed."
+
+  asset_inventory_and_process_discovery:
+    title: "Passive inventory / process discovery context"
+    observation_sections:
+      - "passive_asset_inventory"
+      - "engineering_candidates"
+    techniques:
+      - id: "T0888"
+        name: "Remote System Information Discovery"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0888/"
+      - id: "T0840"
+        name: "Network Connection Enumeration"
+        tactic: "Discovery"
+        url: "https://attack.mitre.org/techniques/T0840/"
+      - id: "T0861"
+        name: "Point & Tag Identification"
+        tactic: "Collection"
+        url: "https://attack.mitre.org/techniques/T0861/"
+    confidence: "contextual"
+    note: "Passive inventory supports defensive assessment, but similar information is also useful to adversaries during discovery and collection."
+
+  impact_availability_context:
+    title: "Availability / loss-of-view review context"
+    observation_ids:
+      - "OT-NET-TCP-QUALITY"
+      - "OT-NET-ICMP-UNREACHABLE"
+      - "OT-NET-TCP-RESET"
+    techniques:
+      - id: "T0814"
+        name: "Denial of Service"
+        tactic: "Inhibit Response Function"
+        url: "https://attack.mitre.org/techniques/T0814/"
+      - id: "T0815"
+        name: "Denial of View"
+        tactic: "Inhibit Response Function"
+        url: "https://attack.mitre.org/techniques/T0815/"
+      - id: "T0829"
+        name: "Loss of View"
+        tactic: "Impact"
+        url: "https://attack.mitre.org/techniques/T0829/"
+    confidence: "contextual"
+    note: "Packet loss, resets and unreachable traffic are not proof of impact, but they may justify reviewing availability, visibility and network reliability."

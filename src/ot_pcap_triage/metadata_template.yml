@@ -1,0 +1,74 @@
+# OT Passive Network Security Assessment
+# Capture metadata template
+#
+# Fill in as much as possible.
+# If something is not known, use:
+#   "Unknown" for text fields
+#   [] for empty lists
+#   null for not applicable / not provided
+
+metadata_version: "1.0"
+
+pcap:
+  file: "<PCAP_FILENAME>.pcapng"
+  capture_start_local_time: "YYYY-MM-DD HH:MM"
+  capture_duration: "15m"
+  normal_production: "Unknown"              # true / false / Unknown
+  special_activity_during_capture: "Unknown"
+  comments: ""
+
+site:
+  plant: "<PLANT_NAME>"
+  area: "<AREA_OR_LINE_NAME>"
+  criticality: "unknown"                    # standard / critical / unknown
+
+capture_point:
+  switch_name: "<SWITCH_NAME>"
+  switch_vendor_model: "Unknown"
+  switch_location: "Unknown"
+  mirror_source: "<PORT_OR_VLAN_OR_UPLINK>"
+  mirror_source_type: "unknown"             # access_port / uplink / trunk / vlan / port_channel / unknown
+  mirror_destination: "<DESTINATION_PORT>"
+  mirror_direction: "unknown"               # rx / tx / both / unknown
+  vlans_observed: []
+  possible_oversubscription: "Unknown"      # true / false / Unknown
+
+expected_network_services:
+  dns_servers: []
+  ntp_servers: []
+  dhcp_servers: []
+  domain_controllers: []
+  monitoring_servers: []
+  backup_servers: []
+  remote_access_servers: []
+
+expected_protocols:
+  industrial: []
+  infrastructure: []
+  administration: []
+  file_transfer: []
+
+known_assets:
+  plcs: []
+  hmis: []
+  scada_servers: []
+  engineering_stations: []
+  historian_mes_opc_servers: []
+  switches_routers_firewalls: []
+  vendor_remote_access_devices: []
+  other_assets: []
+
+expected_communications:
+  plc_allowed_talkers: []
+  internet_access_allowed: "Unknown"        # true / false / Unknown
+  it_network_access_allowed: "Unknown"      # true / false / Unknown
+  vendor_remote_access_used: "Unknown"      # true / false / Unknown
+  windows_domain_used: "Unknown"            # true / false / Unknown
+  dhcp_used: "Unknown"                      # true / false / Unknown
+  smb_used: "Unknown"                       # true / false / Unknown
+  rdp_vnc_ssh_used: "Unknown"               # true / false / Unknown
+
+unknowns:
+  - "VLAN list not confirmed"
+  - "Asset inventory incomplete"
+  - "Expected PLC talkers not confirmed"
