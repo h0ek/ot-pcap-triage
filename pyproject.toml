@@ -35,9 +35,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/h0ek/ot-pcap-traige"
-Source = "https://github.com/h0ek/ot-pcap-traige"
-Issues = "https://github.com/h0ek/ot-pcap-traige/issues"
+Homepage = "https://github.com/h0ek/ot-pcap-triage"
+Source = "https://github.com/h0ek/ot-pcap-triage"
+Issues = "https://github.com/h0ek/ot-pcap-triage/issues"
 
 [project.scripts]
 ot-pcap-triage = "ot_pcap_triage.cli:main"

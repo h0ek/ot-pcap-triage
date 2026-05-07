@@ -39,8 +39,8 @@ sudo apt install -y git tshark wireshark-common python3 python3-pip graphviz p7z
 Clone the repository:
 
 ```bash
-git clone https://github.com/h0ek/ot-pcap-traige
-cd ot-pcap-traige
+git clone https://github.com/h0ek/ot-pcap-triage
+cd ot-pcap-triage
 ```
 
 Create and install in a virtualenv:
