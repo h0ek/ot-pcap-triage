@@ -57,6 +57,20 @@ ot-pcap-triage --help
 ot-pcap-triage --check-deps
 ```
 
+## PyPI install
+
+Install with pipx:
+
+```
+pipx install ot-pcap-triage
+```
+
+Or with pip:
+
+```
+python -m pip install ot-pcap-triage
+```
+
 ## Basic usage
 
 PCAP-only mode:
