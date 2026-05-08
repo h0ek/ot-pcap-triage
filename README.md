@@ -412,3 +412,8 @@ The `.work` directory is removed after a successful run. If the tool crashes, it
 - Encrypted payloads cannot be fully inspected.
 - Findings are candidates/review points until manually validated.
 - Absence of evidence is not evidence of absence
+
+# Example reports
+
+examples/4SICS-GeekLounge-151020.html
+examples/Modbus-TCP-and-Siemens-S7comm-traffic-CTF.html
