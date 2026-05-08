@@ -30,13 +30,22 @@ def is_public_ip(v):
     except Exception:
         return False
 
-def redact(v):
-    if v is None: return ''
-    v=str(v)
-    if not v: return ''
-    if len(v)<=4: return 'REDACTED'
-    if len(v)<=8: return v[0]+'*'*(len(v)-2)+v[-1]
-    return v[:4]+'*'*max(4,len(v)-8)+v[-4:]
+def redact(v, max_len=40):
+    if v is None:
+        return ''
+    v = str(v)
+    if not v:
+        return ''
+    if len(v) <= 4:
+        return 'REDACTED'
+    if len(v) <= 12:
+        return v[0] + '****' + v[-1]
+    prefix = v[:6]
+    suffix = v[-6:]
+    result = prefix + '********' + suffix
+    if len(result) > max_len:
+        return result[:max_len]
+    return result
 
 def normalize_protocol_name(v):
     return re.sub(r'[^a-z0-9_./+-]+','_', (v or 'unknown').strip().lower())

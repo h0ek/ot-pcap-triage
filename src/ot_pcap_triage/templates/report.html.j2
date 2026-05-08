@@ -10,6 +10,8 @@
     th, td { border: 1px solid #ddd; padding: 7px 9px; vertical-align: top; }
     th { background: #f4f4f4; text-align: left; }
     code, pre { background: #f7f7f7; padding: 2px 4px; border-radius: 4px; }
+    td code { white-space: pre-wrap; word-break: break-word; }
+    code.wrap { display: inline-block; max-width: 520px; overflow-wrap: anywhere; }
     pre { padding: 12px; overflow-x: auto; }
     a { color: #2452a3; text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -257,6 +259,63 @@
     <tr><td><span style="display:inline-block;width:22px;height:3px;background:#666666;vertical-align:middle;"></span> edge</td><td>ICMP</td></tr>
     <tr><td><span style="display:inline-block;width:22px;height:3px;background:#444444;vertical-align:middle;"></span> edge</td><td>Other / unknown</td></tr>
   </table>
+
+
+  <h2>DNS Summary</h2>
+  {% if summary.dns_summary and summary.dns_summary.servers %}
+  <table>
+    <tr><th>DNS server</th><th>Public</th><th>Clients</th><th>Packets</th><th>Assessment</th></tr>
+    {% for row in summary.dns_summary.servers %}
+    <tr>
+      <td>{{ row.server }}</td>
+      <td>{{ row.public }}</td>
+      <td>{{ row.client_count }} — {{ row.clients }}</td>
+      <td>{{ row.packets }}</td>
+      <td>{{ row.assessment }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No DNS summary generated.</p>
+  {% endif %}
+
+  <h2>Top Services / Ports</h2>
+  {% if summary.top_services %}
+  <table>
+    <tr><th>Destination</th><th>Protocol</th><th>Clients</th><th>Packets</th><th>Bytes</th><th>Review hint</th></tr>
+    {% for row in summary.top_services[:25] %}
+    <tr>
+      <td>{{ row.dst_ip }}:{{ row.dst_port }}</td>
+      <td>{{ row.protocol }}</td>
+      <td>{{ row.client_count }} — {{ row.clients }}</td>
+      <td>{{ row.packets }}</td>
+      <td>{{ row.bytes }}</td>
+      <td>{{ row.review }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No service/port summary generated.</p>
+  {% endif %}
+
+  <h2>Top Unknown Conversations</h2>
+  {% if summary.top_unknown_conversations %}
+  <table>
+    <tr><th>Source</th><th>Destination</th><th>Packets</th><th>Bytes</th><th>External</th><th>Review hint</th></tr>
+    {% for row in summary.top_unknown_conversations[:25] %}
+    <tr>
+      <td>{{ row.src_ip }}:{{ row.src_port }}</td>
+      <td>{{ row.dst_ip }}:{{ row.dst_port }}</td>
+      <td>{{ row.packets }}</td>
+      <td>{{ row.bytes }}</td>
+      <td>{{ row.external }}</td>
+      <td>{{ row.review_hint }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No major unknown conversations generated.</p>
+  {% endif %}
 
   <h2>Passive Asset Inventory</h2>
   {% if summary.passive_asset_inventory %}

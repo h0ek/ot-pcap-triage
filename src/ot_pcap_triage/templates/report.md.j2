@@ -186,6 +186,43 @@ No external communication graph generated.
   - dark gray = other / unknown
 - Cluster boxes group endpoints by subnet or by external/public scope.
 
+
+## DNS Summary
+
+{% if summary.dns_summary and summary.dns_summary.servers %}
+| DNS server | Public | Clients | Packets | Assessment |
+|---|---|---|---:|---|
+{% for row in summary.dns_summary.servers %}
+| {{ row.server }} | {{ row.public }} | {{ row.client_count }} — {{ row.clients }} | {{ row.packets }} | {{ row.assessment }} |
+{% endfor %}
+{% else %}
+No DNS summary generated.
+{% endif %}
+
+## Top Services / Ports
+
+{% if summary.top_services %}
+| Destination | Protocol | Clients | Packets | Bytes | Review hint |
+|---|---|---|---:|---:|---|
+{% for row in summary.top_services[:25] %}
+| {{ row.dst_ip }}:{{ row.dst_port }} | {{ row.protocol }} | {{ row.client_count }} — {{ row.clients }} | {{ row.packets }} | {{ row.bytes }} | {{ row.review }} |
+{% endfor %}
+{% else %}
+No service/port summary generated.
+{% endif %}
+
+## Top Unknown Conversations
+
+{% if summary.top_unknown_conversations %}
+| Source | Destination | Packets | Bytes | External | Review hint |
+|---|---|---:|---:|---|---|
+{% for row in summary.top_unknown_conversations[:25] %}
+| {{ row.src_ip }}:{{ row.src_port }} | {{ row.dst_ip }}:{{ row.dst_port }} | {{ row.packets }} | {{ row.bytes }} | {{ row.external }} | {{ row.review_hint }} |
+{% endfor %}
+{% else %}
+No major unknown conversations generated.
+{% endif %}
+
 ## Passive Asset Inventory
 
 {% if summary.passive_asset_inventory %}

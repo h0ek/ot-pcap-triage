@@ -13,14 +13,16 @@ from pathlib import Path
 
 
 
+from . import __version__
 from .analyzer import analyze_pcap
 from .metadata import load_metadata
 from .reports import render_reports
 from .tshark import Tshark, TsharkError
+from .utils import is_public_ip
 
 
 def build_parser():
-    p = argparse.ArgumentParser(prog="ot-pcap-triage", description="Offline passive OT PCAP triage helper using tshark.")
+    p = argparse.ArgumentParser(prog="ot-pcap-triage", description=f"Offline passive OT PCAP triage helper using tshark. Version: {__version__}")
     p.add_argument("pcap", type=Path, nargs="?")
     p.add_argument("--metadata", "-m", type=Path)
     p.add_argument("--output", "-o", type=Path)
@@ -28,6 +30,7 @@ def build_parser():
     p.add_argument("--tshark-bin", default="tshark")
     p.add_argument("--graph-top-n", type=int, default=18, help="Top N conversations to include in generated communication graphs (default: 18)")
     p.add_argument("--check-deps", action="store_true", help="Only run system dependency checks and exit")
+    p.add_argument("--version", action="version", version=f"ot-pcap-triage {__version__}")
     return p
 
 
@@ -967,6 +970,159 @@ def _derive_traffic_timeline(pcap: Path, tshark, summary: dict) -> dict:
         "total_packets": sum(bucket_totals),
     }
 
+def _derive_dns_summary(summary: dict) -> dict:
+    rows = []
+    server_stats = {}
+    for conv in summary.get("conversations", []):
+        if conv.get("protocol") != "DNS":
+            continue
+
+        src = conv.get("src_ip", "")
+        dst = conv.get("dst_ip", "")
+        src_port = str(conv.get("src_port", ""))
+        dst_port = str(conv.get("dst_port", ""))
+        packets = int(conv.get("packets") or 0)
+        bytes_ = int(conv.get("bytes") or 0)
+
+        if dst_port == "53":
+            server = dst
+            client = src
+        elif src_port == "53":
+            server = src
+            client = dst
+        else:
+            server = dst
+            client = src
+
+        if not server:
+            continue
+
+        stats = server_stats.setdefault(
+            server,
+            {
+                "server": server,
+                "packets": 0,
+                "bytes": 0,
+                "clients": set(),
+                "public": is_public_ip(server),
+            },
+        )
+        stats["packets"] += packets
+        stats["bytes"] += bytes_
+        if client:
+            stats["clients"].add(client)
+
+    for server, stats in server_stats.items():
+        rows.append(
+            {
+                "server": server,
+                "public": stats["public"],
+                "client_count": len(stats["clients"]),
+                "clients": ", ".join(sorted(stats["clients"])[:8]),
+                "packets": stats["packets"],
+                "bytes": stats["bytes"],
+                "assessment": "public resolver review" if stats["public"] else "internal/unknown resolver",
+            }
+        )
+
+    rows.sort(key=lambda item: (item["public"], item["packets"]), reverse=True)
+    return {
+        "servers": rows[:25],
+        "public_server_count": sum(1 for row in rows if row["public"]),
+        "server_count": len(rows),
+    }
+
+
+def _derive_top_services(summary: dict) -> list[dict]:
+    services = {}
+    for conv in summary.get("conversations", []):
+        dst_ip = conv.get("dst_ip", "")
+        dst_port = str(conv.get("dst_port", ""))
+        protocol = conv.get("protocol", "") or "UNKNOWN"
+        if not dst_ip or not dst_port:
+            continue
+
+        key = (dst_ip, dst_port, protocol)
+        item = services.setdefault(
+            key,
+            {
+                "dst_ip": dst_ip,
+                "dst_port": dst_port,
+                "protocol": protocol,
+                "packets": 0,
+                "bytes": 0,
+                "clients": set(),
+                "public": is_public_ip(dst_ip),
+            },
+        )
+        item["packets"] += int(conv.get("packets") or 0)
+        item["bytes"] += int(conv.get("bytes") or 0)
+        if conv.get("src_ip"):
+            item["clients"].add(conv.get("src_ip"))
+
+    rows = []
+    for item in services.values():
+        dst_port = item["dst_port"]
+        proto = item["protocol"]
+        review = "review"
+        if item["public"]:
+            review = "public service path"
+        elif dst_port in {"102", "502", "44818", "2222", "20000", "4840", "2404"}:
+            review = "industrial service"
+        elif dst_port in {"21", "23", "80", "161", "514"}:
+            review = "cleartext/legacy management candidate"
+        elif dst_port in {"22", "443", "3389", "5900"}:
+            review = "remote/admin service candidate"
+        elif proto == "DNS" or dst_port == "53":
+            review = "DNS service"
+        elif proto == "NTP" or dst_port == "123":
+            review = "NTP service"
+
+        rows.append(
+            {
+                "dst_ip": item["dst_ip"],
+                "dst_port": dst_port,
+                "protocol": proto,
+                "packets": item["packets"],
+                "bytes": item["bytes"],
+                "client_count": len(item["clients"]),
+                "clients": ", ".join(sorted(item["clients"])[:8]),
+                "public": item["public"],
+                "review": review,
+            }
+        )
+
+    rows.sort(key=lambda item: item["packets"], reverse=True)
+    return rows[:50]
+
+
+def _derive_top_unknown_conversations(summary: dict) -> list[dict]:
+    rows = []
+    for conv in summary.get("conversations", []):
+        proto = str(conv.get("protocol") or "")
+        if proto.upper() not in {"UNKNOWN", "OTHER"}:
+            continue
+
+        packets = int(conv.get("packets") or 0)
+        if packets <= 0:
+            continue
+
+        rows.append(
+            {
+                "src_ip": conv.get("src_ip", ""),
+                "src_port": conv.get("src_port", ""),
+                "dst_ip": conv.get("dst_ip", ""),
+                "dst_port": conv.get("dst_port", ""),
+                "packets": packets,
+                "bytes": int(conv.get("bytes") or 0),
+                "external": bool(conv.get("external")),
+                "review_hint": "public/unknown protocol" if conv.get("external") else "unknown internal protocol or undecoded application",
+            }
+        )
+
+    rows.sort(key=lambda item: item["packets"], reverse=True)
+    return rows[:50]
+
 def _enrich_summary(summary: dict, findings: list[dict], catalog: dict | None = None, mitre_map: dict | None = None) -> None:
     summary["observed_industrial_protocols"] = _derive_observed_industrial_protocols(summary)
     summary["extended_protocol_candidates"] = _derive_extended_protocol_candidates(summary, catalog or {})
@@ -979,6 +1135,9 @@ def _enrich_summary(summary: dict, findings: list[dict], catalog: dict | None = 
     summary["analyst_questions"] = _derive_analyst_questions(summary, findings)
     summary["nist_review_context"] = _derive_nist_review_context(summary, findings)
     summary["mitre_ics_context"] = _derive_mitre_ics_context(summary, findings, mitre_map or {})
+    summary["dns_summary"] = _derive_dns_summary(summary)
+    summary["top_services"] = _derive_top_services(summary)
+    summary["top_unknown_conversations"] = _derive_top_unknown_conversations(summary)
 
 
 
