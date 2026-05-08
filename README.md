@@ -379,11 +379,7 @@ Graph behavior:
 
 ## Public test PCAPs
 
-Public ICS/SCADA PCAPs are available at Netresec:
-
-```text
-https://www.netresec.com/?page=PcapFiles
-```
+Public ICS/SCADA PCAPs are available at Netresec: https://www.netresec.com/?page=PcapFiles
 
 Useful sections:
 
@@ -415,4 +411,4 @@ The `.work` directory is removed after a successful run. If the tool crashes, it
 - SPAN/mirror oversubscription may cause missing packets.
 - Encrypted payloads cannot be fully inspected.
 - Findings are candidates/review points until manually validated.
-- Absence of evidence is not evidence of absence.
+- Absence of evidence is not evidence of absence

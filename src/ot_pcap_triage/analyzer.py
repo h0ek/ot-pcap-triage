@@ -308,7 +308,7 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
     _write_partial(work_dir, "partial_main_summary.json", {
         "frame_count": frame_count,
         "bytes": total_bytes,
-        "duration_human": _dur(duration),
+        "duration_human": _dur(duration) if first and last and duration > 0 else "Unknown",
         "top_protocols": protocol_rows[:25],
         "top_endpoints": endpoint_rows[:25],
         "top_conversations": conversation_rows[:25],
@@ -451,7 +451,7 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
 
     quality = {
         "duration_seconds": duration,
-        "duration_human": _dur(duration),
+        "duration_human": _dur(duration) if first and last and duration > 0 else "Unknown",
         "frame_count": frame_count,
         "total_bytes": total_bytes,
         "avg_packets_per_second": frame_count / duration if duration > 0 else 0,
@@ -462,6 +462,8 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
         quality["notes"].append("Very short capture. Findings may have lower confidence.")
     if frame_count == 0:
         quality["notes"].append("No packets parsed.")
+    if frame_count > 0 and (not first or not last or duration <= 0):
+        quality["notes"].append("Packet timestamps are missing or zeroed; time-based analysis is limited.")
 
     summary = {
         "tool": "ot-pcap-triage",
@@ -469,10 +471,10 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
             "file": pcap.name,
             "path": str(pcap),
             "sha256": sha256_file(pcap),
-            "first_packet_time": _iso(first),
-            "last_packet_time": _iso(last),
+            "first_packet_time": _iso(first) if first and last and duration > 0 else "Timestamp unavailable/zeroed",
+            "last_packet_time": _iso(last) if first and last and duration > 0 else "Timestamp unavailable/zeroed",
             "duration_seconds": duration,
-            "duration_human": _dur(duration),
+            "duration_human": _dur(duration) if first and last and duration > 0 else "Unknown",
             "frames": frame_count,
             "bytes": total_bytes,
         },

@@ -806,6 +806,9 @@ def _timeline_bucket_human(seconds: int) -> str:
 
 def _timeline_group_from_row(row: dict) -> str:
     proto = str(row.get("_ws.col.Protocol") or "").strip().lower()
+    frame_protocols = str(row.get("frame.protocols") or "").strip().lower()
+    combined = f"{proto}:{frame_protocols}"
+
     ports = {
         str(v).strip()
         for v in (
@@ -815,27 +818,42 @@ def _timeline_group_from_row(row: dict) -> str:
         if str(v or "").strip()
     }
 
-    if any(token in proto for token in ("s7", "cotp", "s7comm")) or "102" in ports:
+    if any(token in combined for token in ("s7", "cotp", "s7comm")) or "102" in ports:
         return "S7/COTP"
-    if "dns" in proto or "53" in ports:
+    if any(token in combined for token in ("modbus", "mbtcp")) or "502" in ports:
+        return "Modbus"
+    if any(token in combined for token in ("enip", "cip", "ethernet/ip")) or ports & {"44818", "2222"}:
+        return "EtherNet/IP"
+    if "bacnet" in combined or "47808" in ports:
+        return "BACnet"
+    if "opcua" in combined or "4840" in ports:
+        return "OPC UA"
+    if "dnp3" in combined or "20000" in ports:
+        return "DNP3"
+    if "http" in combined or ports & {"80", "8080", "8000", "8008"}:
+        return "HTTP"
+    if any(token in combined for token in ("smb", "nbss", "nbdgm", "nbns")) or ports & {"137", "138", "139", "445"}:
+        return "SMB/NetBIOS"
+    if "dns" in combined or "53" in ports:
         return "DNS"
-    if "ntp" in proto or "123" in ports:
+    if "ntp" in combined or "123" in ports:
         return "NTP"
-    if proto in {"icmp", "icmpv6"} or "icmp" in proto:
-        return "ICMP"
-    if any(token in proto for token in ("openvpn", "isakmp", "esp", "udpencap")) or ports & {"1194", "500", "4500"}:
+    if any(token in combined for token in ("icmp", "icmpv6", "arp")):
+        return "ICMP/ARP"
+    if any(token in combined for token in ("openvpn", "isakmp", "esp", "udpencap")) or ports & {"1194", "500", "4500"}:
         return "VPN"
-    if any(token in proto for token in ("llmnr", "nbns", "mdns", "ssdp", "ws-discovery")) or ports & {"3702", "5355", "5353", "1900"}:
+    if any(token in combined for token in ("llmnr", "mdns", "ssdp", "ws-discovery")) or ports & {"3702", "5355", "5353", "1900"}:
         return "Discovery"
     return "Other"
 
-
 def _derive_traffic_timeline(pcap: Path, tshark, summary: dict) -> dict:
     from datetime import datetime, timezone
+    import math
 
     fields = [
         "frame.time_epoch",
         "_ws.col.Protocol",
+        "frame.protocols",
         "tcp.srcport",
         "tcp.dstport",
         "udp.srcport",
@@ -847,62 +865,105 @@ def _derive_traffic_timeline(pcap: Path, tshark, summary: dict) -> dict:
     else:
         row_iter = tshark.fields(pcap, fields)
 
-    epochs = []
     parsed_rows = []
-    for row in row_iter:
-        raw_epoch = row.get("frame.time_epoch")
-        try:
-            epoch = float(raw_epoch)
-        except (TypeError, ValueError):
-            continue
-        epochs.append(epoch)
-        parsed_rows.append((epoch, row))
+    valid_epochs = []
 
-    if not epochs:
+    for index, row in enumerate(row_iter):
+        raw_epoch = row.get("frame.time_epoch")
+        epoch = None
+        try:
+            candidate = float(raw_epoch)
+            if candidate > 0:
+                epoch = candidate
+                valid_epochs.append(candidate)
+        except (TypeError, ValueError):
+            pass
+        parsed_rows.append((index, epoch, row))
+
+    if not parsed_rows:
         return {}
 
-    first = min(epochs)
-    last = max(epochs)
-    bucket_seconds = _timeline_bucket_seconds(summary)
-    bucket_count = max(1, int((last - first) // bucket_seconds) + 1)
-    groups = ["S7/COTP", "DNS", "NTP", "ICMP", "VPN", "Discovery", "Other"]
-    series = {group: [0] * bucket_count for group in groups}
+    groups = [
+        "S7/COTP",
+        "Modbus",
+        "EtherNet/IP",
+        "BACnet",
+        "OPC UA",
+        "DNP3",
+        "HTTP",
+        "SMB/NetBIOS",
+        "DNS",
+        "NTP",
+        "ICMP/ARP",
+        "VPN",
+        "Discovery",
+        "Other",
+    ]
 
-    for epoch, row in parsed_rows:
-        idx = int((epoch - first) // bucket_seconds)
-        if idx < 0:
-            idx = 0
-        elif idx >= bucket_count:
-            idx = bucket_count - 1
-        series[_timeline_group_from_row(row)][idx] += 1
+    if valid_epochs:
+        first = min(valid_epochs)
+        last = max(valid_epochs)
+        bucket_seconds = _timeline_bucket_seconds(summary)
+        bucket_count = max(1, int((last - first) // bucket_seconds) + 1)
+        series = {group: [0] * bucket_count for group in groups}
 
-    labels = []
-    for idx in range(bucket_count):
-        ts = datetime.fromtimestamp(first + idx * bucket_seconds, tz=timezone.utc)
-        labels.append(ts.strftime("%Y-%m-%d %H:%M"))
+        for _index, epoch, row in parsed_rows:
+            if epoch is None:
+                continue
+            idx = int((epoch - first) // bucket_seconds)
+            if idx < 0:
+                idx = 0
+            elif idx >= bucket_count:
+                idx = bucket_count - 1
+            series[_timeline_group_from_row(row)][idx] += 1
+
+        labels = []
+        for idx in range(bucket_count):
+            ts = datetime.fromtimestamp(first + idx * bucket_seconds, tz=timezone.utc)
+            labels.append(ts.strftime("%Y-%m-%d %H:%M"))
+
+        mode = "time"
+        bucket_human = _timeline_bucket_human(bucket_seconds)
+        start_time = datetime.fromtimestamp(first, tz=timezone.utc).isoformat()
+        end_time = datetime.fromtimestamp(last, tz=timezone.utc).isoformat()
+
+    else:
+        packet_count = len(parsed_rows)
+        bucket_count = min(60, max(1, packet_count))
+        packets_per_bucket = max(1, math.ceil(packet_count / bucket_count))
+        series = {group: [0] * bucket_count for group in groups}
+
+        for index, _epoch, row in parsed_rows:
+            idx = min(bucket_count - 1, index // packets_per_bucket)
+            series[_timeline_group_from_row(row)][idx] += 1
+
+        labels = [f"Packet bucket {idx + 1}" for idx in range(bucket_count)]
+        mode = "packet_order"
+        bucket_human = f"{packets_per_bucket} packets"
+        start_time = "Timestamp unavailable/zeroed"
+        end_time = "Timestamp unavailable/zeroed"
 
     totals = {group: sum(values) for group, values in series.items()}
     dominant = max(totals, key=totals.get) if totals else "n/a"
-    bucket_totals = [sum(series[group][idx] for group in groups) for idx in range(bucket_count)]
+    bucket_totals = [sum(series[group][idx] for group in groups) for idx in range(len(labels))]
     nonzero_bucket_totals = [value for value in bucket_totals if value > 0]
     avg = (sum(nonzero_bucket_totals) / len(nonzero_bucket_totals)) if nonzero_bucket_totals else 0.0
     peak = max(nonzero_bucket_totals) if nonzero_bucket_totals else 0
     bursts_detected = bool(nonzero_bucket_totals and peak >= max(50, avg * 3.0))
 
     return {
-        "bucket_seconds": bucket_seconds,
-        "bucket_human": _timeline_bucket_human(bucket_seconds),
+        "mode": mode,
+        "bucket_seconds": bucket_seconds if valid_epochs else None,
+        "bucket_human": bucket_human,
         "labels": labels,
         "series": series,
         "groups": groups,
-        "start_epoch": first,
-        "end_epoch": last,
-        "start_time": datetime.fromtimestamp(first, tz=timezone.utc).isoformat(),
-        "end_time": datetime.fromtimestamp(last, tz=timezone.utc).isoformat(),
+        "start_time": start_time,
+        "end_time": end_time,
         "dominant_protocol": dominant,
         "bursts_detected": bursts_detected,
         "peak_bucket_packets": peak,
-        "bucket_count": bucket_count,
+        "bucket_count": len(labels),
         "total_packets": sum(bucket_totals),
     }
 

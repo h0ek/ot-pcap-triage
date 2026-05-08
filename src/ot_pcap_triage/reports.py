@@ -90,7 +90,7 @@ def _render_timeline_chart(output_dir: Path, summary: dict):
 
     order = [
         group
-        for group in ["S7/COTP", "DNS", "NTP", "ICMP", "VPN", "Discovery", "Other"]
+        for group in ["S7/COTP", "Modbus", "EtherNet/IP", "BACnet", "OPC UA", "DNP3", "HTTP", "SMB/NetBIOS", "DNS", "NTP", "ICMP/ARP", "VPN", "Discovery", "Other"]
         if group in series
     ]
     if not order:
