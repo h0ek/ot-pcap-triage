@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ot-pcap-triage"
-version = "0.3.8"
+version = "0.3.9"
 description = "Offline passive OT PCAP triage helper using tshark."
 readme = "README.md"
 requires-python = ">=3.10"
