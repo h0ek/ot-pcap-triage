@@ -415,5 +415,9 @@ The `.work` directory is removed after a successful run. If the tool crashes, it
 
 # Example reports
 
+Check example folder in this repo.
+
+```
 examples/4SICS-GeekLounge-151020.html
 examples/Modbus-TCP-and-Siemens-S7comm-traffic-CTF.html
+```
