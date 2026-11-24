@@ -152,13 +152,6 @@ protocols:
     confidence: "medium"
     note: "Mitsubishi PLC communication"
 
-  triton_tristation:
-    name: "TriStation"
-    ports: []
-    category: "safety"
-    confidence: "low"
-    note: "Triton/Triconex safety controller protocol; port may vary"
-
   wago_io_check:
     name: "WAGO / CODESYS related service candidate"
     ports:
@@ -167,3 +160,80 @@ protocols:
     category: "industrial"
     confidence: "low"
     note: "Vendor/service-specific traffic; validate before reporting"
+
+  omron_fins:
+    name: "Omron FINS"
+    ports: ["9600/tcp", "9600/udp"]
+    category: "industrial"
+    confidence: "low"
+    note: "Omron PLC ecosystem; verify identity"
+
+  ge_srtp:
+    name: "GE SRTP"
+    ports: ["18245/tcp"]
+    category: "industrial"
+    confidence: "low"
+    note: "GE / Emerson PACSystems ecosystem"
+
+  ge_egd:
+    name: "GE Ethernet Global Data"
+    ports: ["18246/udp"]
+    category: "industrial"
+    confidence: "low"
+    note: "GE / Emerson PACSystems ecosystem"
+
+  mms:
+    name: "ISO-on-TCP / MMS or S7"
+    ports: ["102/tcp"]
+    category: "utility"
+    confidence: "low"
+    note: "Shared port; IEC 61850 MMS, S7 or another ISO transport service"
+
+  opc_classic:
+    name: "DCE/RPC endpoint mapper / possible OPC Classic"
+    ports: ["135/tcp"]
+    category: "Windows integration"
+    confidence: "low"
+    note: "Shared Windows RPC port; not evidence of OPC DA"
+
+  mqtt:
+    name: "MQTT / MQTT over TLS"
+    ports: ["1883/tcp", "8883/tcp"]
+    category: "IIoT integration"
+    confidence: "low"
+    note: "MQTT brokers including possible Sparkplug B usage; payload validation required"
+
+  amqp:
+    name: "AMQP / AMQP over TLS"
+    ports: ["5672/tcp", "5671/tcp"]
+    category: "IIoT integration"
+    confidence: "low"
+    note: "Message broker integration, IT or OT"
+
+  modbus_tls:
+    name: "Modbus Security / TLS"
+    ports: ["802/tcp"]
+    category: "industrial"
+    confidence: "low"
+    note: "Encrypted Modbus candidate; not verified by port"
+
+  tristation:
+    name: "TriStation / Triconex"
+    ports: ["1502/udp"]
+    category: "safety"
+    confidence: "low"
+    note: "Possible Schneider Electric Triconex safety engineering traffic"
+
+  ptp:
+    name: "Precision Time Protocol"
+    ports: ["319/udp", "320/udp"]
+    category: "time synchronization"
+    confidence: "low"
+    note: "Industrial / enterprise time synchronization"
+
+  pcom:
+    name: "Unitronics PCOM"
+    ports: ["20256/tcp"]
+    category: "industrial"
+    confidence: "low"
+    note: "Unitronics PLC engineering service candidate"

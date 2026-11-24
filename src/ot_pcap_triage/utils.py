@@ -23,29 +23,20 @@ def first_nonempty(*vals):
     return ''
 
 def is_public_ip(v):
-    if not v: return False
+    if not v:
+        return False
     try:
-        ip=ipaddress.ip_address(v)
-        return ip.version==4 and not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified)
-    except Exception:
+        ip = ipaddress.ip_address(v)
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        return ip.is_global and not (ip.is_multicast or ip.is_reserved or ip.is_link_local or ip.is_loopback or ip.is_unspecified or getattr(ip, "is_site_local", False))
+    except ValueError:
         return False
 
+
 def redact(v, max_len=40):
-    if v is None:
-        return ''
-    v = str(v)
-    if not v:
-        return ''
-    if len(v) <= 4:
-        return 'REDACTED'
-    if len(v) <= 12:
-        return v[0] + '****' + v[-1]
-    prefix = v[:6]
-    suffix = v[-6:]
-    result = prefix + '********' + suffix
-    if len(result) > max_len:
-        return result[:max_len]
-    return result
+    return "REDACTED" if v not in (None, "") else ""
+
 
 def normalize_protocol_name(v):
     return re.sub(r'[^a-z0-9_./+-]+','_', (v or 'unknown').strip().lower())

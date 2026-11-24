@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 from . import __version__
-from .analyzer import analyze_pcap
+from .analyzer import analyze_pcap, _proto
 from .metadata import load_metadata
 from .reports import render_reports
 from .tshark import Tshark, TsharkError
@@ -87,6 +87,8 @@ def _preflight_output_dir(out: Path):
             )
 
         out.mkdir(parents=True, exist_ok=True)
+        if any(out.iterdir()):
+            return False, f"Output directory must be empty: {out}"
         test_file = out / ".ot_pcap_triage_write_test"
         test_file.write_text("ok\n", encoding="utf-8")
         test_file.unlink(missing_ok=True)
@@ -165,6 +167,8 @@ def _derive_extended_protocol_candidates(summary: dict, catalog: dict) -> list[d
                 src_port = str(conv.get("src_port", ""))
                 dst_port = str(conv.get("dst_port", ""))
 
+                if conv.get("transport") != transport or conv.get("protocol") not in {"UNKNOWN", "COTP", "TPKT", "TLS"}:
+                    continue
                 if src_port != number and dst_port != number:
                     continue
 
@@ -178,9 +182,7 @@ def _derive_extended_protocol_candidates(summary: dict, catalog: dict) -> list[d
             if packets <= 0:
                 continue
 
-            confidence = proto_data.get("confidence", "low")
-            if packets < 5:
-                confidence = "low"
+            confidence = "low"
 
             rows.append({
                 "id": proto_id,
@@ -199,7 +201,7 @@ def _derive_extended_protocol_candidates(summary: dict, catalog: dict) -> list[d
             })
 
     rows.sort(key=lambda item: item["packets"], reverse=True)
-    return rows[:50]
+    return rows
 
 def _derive_observed_industrial_protocols(summary: dict) -> list[dict]:
     rows = []
@@ -260,7 +262,7 @@ def _derive_top_risky_observations(findings: list[dict]) -> list[dict]:
 def _top_s7_matrix(summary: dict) -> list[dict]:
     pairs = {}
     for conv in summary.get("conversations", []):
-        if conv.get("protocol") != "S7/COTP":
+        if conv.get("protocol") not in {"S7/COTP", "S7comm Plus"}:
             continue
         src = conv.get("src_ip", "")
         dst = conv.get("dst_ip", "")
@@ -340,7 +342,7 @@ def _derive_passive_asset_inventory(summary: dict) -> list[dict]:
         if sp == "123":
             roles[src].add("possible NTP server")
 
-        if dp == "102" or proto == "S7/COTP":
+        if proto in {"S7/COTP", "S7comm Plus"} or (proto in {"UNKNOWN", "COTP", "TPKT"} and dp == "102" and conv.get("transport") == "tcp"):
             if dp == "102":
                 roles[dst].add("possible Siemens S7 PLC/controller")
                 roles[src].add("possible S7 client / HMI / engineering")
@@ -350,7 +352,7 @@ def _derive_passive_asset_inventory(summary: dict) -> list[dict]:
                 roles[src].add("possible Siemens S7 PLC/controller")
                 roles[dst].add("possible S7 client / HMI / engineering")
 
-        if dp == "502" or proto == "Modbus":
+        if proto == "Modbus" or (proto == "UNKNOWN" and dp == "502" and conv.get("transport") == "tcp"):
             if dp == "502":
                 roles[dst].add("possible Modbus device/gateway")
                 roles[src].add("possible Modbus client / SCADA / engineering")
@@ -358,15 +360,15 @@ def _derive_passive_asset_inventory(summary: dict) -> list[dict]:
             elif sp == "502":
                 roles[src].add("possible Modbus device/gateway")
 
-        if dp in {"44818", "2222"} or proto == "EtherNet/IP":
+        if proto in {"EtherNet/IP", "CIP Safety"} or (proto == "UNKNOWN" and (dp, conv.get("transport")) in {("44818", "tcp"), ("44818", "udp"), ("2222", "udp")}):
             roles[dst].add("possible EtherNet/IP device")
             roles[src].add("possible EtherNet/IP scanner/client")
 
-        if dp == "20000" or proto == "DNP3":
+        if proto == "DNP3" or (proto == "UNKNOWN" and dp == "20000"):
             roles[dst].add("possible DNP3 outstation/device")
             roles[src].add("possible DNP3 master/client")
 
-        if dp == "4840" or proto == "OPC UA":
+        if proto == "OPC UA" or (proto == "UNKNOWN" and dp == "4840" and conv.get("transport") == "tcp"):
             roles[dst].add("possible OPC UA server")
             roles[src].add("possible OPC UA client")
 
@@ -413,11 +415,11 @@ def _derive_cleartext_management_surface(summary: dict, findings: list[dict]) ->
         sp = str(conv.get("src_port", ""))
         dp = str(conv.get("dst_port", ""))
 
-        if proto not in protocols and dp not in service_ports and sp not in service_ports:
+        if proto not in protocols and (proto != "UNKNOWN" or (dp not in service_ports and sp not in service_ports)):
             continue
 
         service_host = dst if dp in service_ports else src
-        key = (service_host, proto if proto != "UNKNOWN" else f"port-{dp or sp}")
+        key = (service_host, proto if proto != "UNKNOWN" else f"port-{dp if dp in service_ports else sp}")
         surface.setdefault(key, {
             "host": service_host,
             "protocol": key[1],
@@ -436,9 +438,9 @@ def _derive_cleartext_management_surface(summary: dict, findings: list[dict]) ->
     rows = []
     for item in surface.values():
         proto = item["protocol"]
-        if proto in {"TELNET", "FTP", "TFTP", "port-23", "port-21", "port-69", "port-514"}:
+        if proto in {"TELNET", "FTP", "TFTP"}:
             risk = "high"
-        elif proto in {"HTTP", "SNMP", "port-80", "port-161"}:
+        elif proto in {"HTTP", "SNMP"}:
             risk = "medium"
         else:
             risk = "review"
@@ -487,7 +489,7 @@ def _derive_convergence_indicators(summary: dict, findings: list[dict]) -> list[
         proto = conv.get("protocol", "")
         sp = str(conv.get("src_port", ""))
         dp = str(conv.get("dst_port", ""))
-        if proto in {"S7/COTP", "Modbus", "DNP3", "OPC UA", "EtherNet/IP"} or dp in {"102", "502", "20000", "4840", "44818"}:
+        if proto in {"S7/COTP", "S7comm Plus", "Modbus", "DNP3", "OPC UA", "EtherNet/IP"} or (proto in {"UNKNOWN", "COTP", "TPKT"} and dp in {"102", "502", "20000", "4840", "44818"}):
             industrial_hosts.add(conv.get("dst_ip", ""))
             client_hosts.add(conv.get("src_ip", ""))
 
@@ -514,8 +516,8 @@ def _derive_convergence_indicators(summary: dict, findings: list[dict]) -> list[
 def _derive_engineering_candidates(summary: dict) -> list[dict]:
     stats = defaultdict(lambda: {"industrial_targets": set(), "protocols": set(), "packets": 0, "mgmt_protocols": set()})
     industrial_ports = {"102", "502", "20000", "4840", "44818", "2222", "2404", "9600", "48898", "18245", "5094"}
-    industrial_protocols = {"S7/COTP", "Modbus", "DNP3", "OPC UA", "EtherNet/IP", "IEC104", "FINS"}
-    mgmt_protocols = {"HTTP", "TLS", "SSH", "TELNET", "FTP", "SMB", "RDP", "VNC"}
+    industrial_protocols = {"S7/COTP", "S7comm Plus", "Modbus", "DNP3", "OPC UA", "EtherNet/IP", "CIP Safety", "IEC104", "FINS", "Beckhoff ADS", "GE SRTP", "GE EGD", "BACnet", "HART-IP", "MMS", "CODESYS", "SLMP"}
+    mgmt_protocols = {"HTTP", "TLS", "SSH", "TELNET", "FTP", "SMBv1", "SMB2/3", "RDP", "VNC"}
 
     for conv in summary.get("conversations", []):
         src = conv.get("src_ip", "")
@@ -524,7 +526,7 @@ def _derive_engineering_candidates(summary: dict) -> list[dict]:
         dp = str(conv.get("dst_port", ""))
         packets = int(conv.get("packets") or 0)
 
-        if dp in industrial_ports or proto in industrial_protocols:
+        if proto in industrial_protocols or (proto in {"UNKNOWN", "COTP", "TPKT"} and dp in industrial_ports):
             stats[src]["industrial_targets"].add(dst)
             stats[src]["protocols"].add(proto)
             stats[src]["packets"] += packets
@@ -808,44 +810,20 @@ def _timeline_bucket_human(seconds: int) -> str:
 
 
 def _timeline_group_from_row(row: dict) -> str:
-    proto = str(row.get("_ws.col.Protocol") or "").strip().lower()
-    frame_protocols = str(row.get("frame.protocols") or "").strip().lower()
-    combined = f"{proto}:{frame_protocols}"
-
-    ports = {
-        str(v).strip()
-        for v in (
-            row.get("tcp.srcport"), row.get("tcp.dstport"),
-            row.get("udp.srcport"), row.get("udp.dstport"),
-        )
-        if str(v or "").strip()
-    }
-
-    if any(token in combined for token in ("s7", "cotp", "s7comm")) or "102" in ports:
+    proto = _proto(row)
+    if proto in {"S7/COTP", "S7comm Plus"}:
         return "S7/COTP"
-    if any(token in combined for token in ("modbus", "mbtcp")) or "502" in ports:
-        return "Modbus"
-    if any(token in combined for token in ("enip", "cip", "ethernet/ip")) or ports & {"44818", "2222"}:
+    if proto in {"Modbus", "EtherNet/IP", "BACnet", "OPC UA", "DNP3", "HTTP", "DNS", "NTP"}:
+        return proto
+    if proto in {"CIP Safety"}:
         return "EtherNet/IP"
-    if "bacnet" in combined or "47808" in ports:
-        return "BACnet"
-    if "opcua" in combined or "4840" in ports:
-        return "OPC UA"
-    if "dnp3" in combined or "20000" in ports:
-        return "DNP3"
-    if "http" in combined or ports & {"80", "8080", "8000", "8008"}:
-        return "HTTP"
-    if any(token in combined for token in ("smb", "nbss", "nbdgm", "nbns")) or ports & {"137", "138", "139", "445"}:
+    if proto in {"SMBv1", "SMB2/3", "NBSS", "NBNS", "NBDGM/Browser"}:
         return "SMB/NetBIOS"
-    if "dns" in combined or "53" in ports:
-        return "DNS"
-    if "ntp" in combined or "123" in ports:
-        return "NTP"
-    if any(token in combined for token in ("icmp", "icmpv6", "arp")):
+    if proto in {"ICMP", "ICMPV6", "ARP"}:
         return "ICMP/ARP"
-    if any(token in combined for token in ("openvpn", "isakmp", "esp", "udpencap")) or ports & {"1194", "500", "4500"}:
+    if proto in {"OPENVPN", "ISAKMP", "ESP", "IPsec/UDP-encap", "WIREGUARD"}:
         return "VPN"
-    if any(token in combined for token in ("llmnr", "mdns", "ssdp", "ws-discovery")) or ports & {"3702", "5355", "5353", "1900"}:
+    if proto in {"LLMNR", "MDNS", "SSDP", "WS-DISCOVERY"}:
         return "Discovery"
     return "Other"
 
@@ -868,83 +846,47 @@ def _derive_traffic_timeline(pcap: Path, tshark, summary: dict) -> dict:
     else:
         row_iter = tshark.fields(pcap, fields)
 
-    parsed_rows = []
-    valid_epochs = []
-
-    for index, row in enumerate(row_iter):
-        raw_epoch = row.get("frame.time_epoch")
-        epoch = None
-        try:
-            candidate = float(raw_epoch)
-            if candidate > 0:
-                epoch = candidate
-                valid_epochs.append(candidate)
-        except (TypeError, ValueError):
-            pass
-        parsed_rows.append((index, epoch, row))
-
-    if not parsed_rows:
-        return {}
-
-    groups = [
-        "S7/COTP",
-        "Modbus",
-        "EtherNet/IP",
-        "BACnet",
-        "OPC UA",
-        "DNP3",
-        "HTTP",
-        "SMB/NetBIOS",
-        "DNS",
-        "NTP",
-        "ICMP/ARP",
-        "VPN",
-        "Discovery",
-        "Other",
-    ]
-
-    if valid_epochs:
-        first = min(valid_epochs)
-        last = max(valid_epochs)
-        bucket_seconds = _timeline_bucket_seconds(summary)
+    groups = ["S7/COTP", "Modbus", "EtherNet/IP", "BACnet", "OPC UA", "DNP3", "HTTP", "SMB/NetBIOS", "DNS", "NTP", "ICMP/ARP", "VPN", "Discovery", "Other"]
+    pcap_info = summary.get("pcap", {})
+    try:
+        first = datetime.fromisoformat(pcap_info["first_packet_time"]).timestamp()
+        last = datetime.fromisoformat(pcap_info["last_packet_time"]).timestamp()
+        timed = last >= first
+    except (KeyError, ValueError, TypeError):
+        timed = False
+    bucket_seconds = None
+    if timed:
+        bucket_seconds = max(_timeline_bucket_seconds(summary), math.ceil((last - first) / 1440))
         bucket_count = max(1, int((last - first) // bucket_seconds) + 1)
         series = {group: [0] * bucket_count for group in groups}
-
-        for _index, epoch, row in parsed_rows:
-            if epoch is None:
+        for row in row_iter:
+            try:
+                epoch = float(row.get("frame.time_epoch", ""))
+                if not math.isfinite(epoch) or epoch < first or epoch > last:
+                    continue
+            except (TypeError, ValueError):
                 continue
-            idx = int((epoch - first) // bucket_seconds)
-            if idx < 0:
-                idx = 0
-            elif idx >= bucket_count:
-                idx = bucket_count - 1
+            idx = min(bucket_count - 1, int((epoch - first) // bucket_seconds))
             series[_timeline_group_from_row(row)][idx] += 1
-
-        labels = []
-        for idx in range(bucket_count):
-            ts = datetime.fromtimestamp(first + idx * bucket_seconds, tz=timezone.utc)
-            labels.append(ts.strftime("%Y-%m-%d %H:%M"))
-
+        labels = [datetime.fromtimestamp(first + idx * bucket_seconds, tz=timezone.utc).strftime("%Y-%m-%d %H:%M") for idx in range(bucket_count)]
         mode = "time"
-        bucket_human = _timeline_bucket_human(bucket_seconds)
+        bucket_human = f"{bucket_seconds} seconds"
         start_time = datetime.fromtimestamp(first, tz=timezone.utc).isoformat()
         end_time = datetime.fromtimestamp(last, tz=timezone.utc).isoformat()
-
     else:
-        packet_count = len(parsed_rows)
-        bucket_count = min(60, max(1, packet_count))
+        packet_count = int(pcap_info.get("frames") or 0)
+        if not packet_count:
+            return {}
+        bucket_count = min(60, packet_count)
         packets_per_bucket = max(1, math.ceil(packet_count / bucket_count))
         series = {group: [0] * bucket_count for group in groups}
-
-        for index, _epoch, row in parsed_rows:
+        for index, row in enumerate(row_iter):
             idx = min(bucket_count - 1, index // packets_per_bucket)
             series[_timeline_group_from_row(row)][idx] += 1
-
         labels = [f"Packet bucket {idx + 1}" for idx in range(bucket_count)]
         mode = "packet_order"
         bucket_human = f"{packets_per_bucket} packets"
-        start_time = "Timestamp unavailable/zeroed"
-        end_time = "Timestamp unavailable/zeroed"
+        start_time = end_time = "Timestamp unavailable/zeroed"
 
     totals = {group: sum(values) for group, values in series.items()}
     dominant = max(totals, key=totals.get) if totals else "n/a"
@@ -956,7 +898,7 @@ def _derive_traffic_timeline(pcap: Path, tshark, summary: dict) -> dict:
 
     return {
         "mode": mode,
-        "bucket_seconds": bucket_seconds if valid_epochs else None,
+        "bucket_seconds": bucket_seconds,
         "bucket_human": bucket_human,
         "labels": labels,
         "series": series,
@@ -1067,8 +1009,10 @@ def _derive_top_services(summary: dict) -> list[dict]:
         review = "review"
         if item["public"]:
             review = "public service path"
-        elif dst_port in {"102", "502", "44818", "2222", "20000", "4840", "2404"}:
-            review = "industrial service"
+        elif proto in {"S7/COTP", "S7comm Plus", "Modbus", "EtherNet/IP", "DNP3", "OPC UA", "IEC104"}:
+            review = "decoded industrial service"
+        elif proto in {"UNKNOWN", "COTP", "TPKT"} and dst_port in {"102", "502", "44818", "2222", "20000", "4840", "2404"}:
+            review = "industrial port candidate"
         elif dst_port in {"21", "23", "80", "161", "514"}:
             review = "cleartext/legacy management candidate"
         elif dst_port in {"22", "443", "3389", "5900"}:
@@ -1192,7 +1136,10 @@ def main(argv=None):
     _print_dependency_status(dep_status)
     if getattr(a, "check_deps", False):
         return 0 if dep_status.get("ok_required") else 2
-    if not a.pcap or not a.pcap.exists():
+    if a.max_evidence < 1:
+        print("[!] --max-evidence must be at least 1", file=sys.stderr)
+        return 2
+    if not a.pcap or not a.pcap.is_file():
         print(f"[!] PCAP not found: {a.pcap}", file=sys.stderr)
         return 2
     if a.metadata and not a.metadata.exists():

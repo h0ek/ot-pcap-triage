@@ -27,6 +27,22 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build
 
+      - name: Verify release version
+        run: |
+          python -c 'import os, pathlib, tomllib; version = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]; assert os.environ["GITHUB_REF_NAME"] == "v" + version, "Tag and package version differ"'
+
+      - name: Install regression dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark wireshark-common graphviz
+          python -m pip install -e .
+
+      - name: Run regression tests
+        run: |
+          command -v tshark
+          command -v capinfos
+          python -B -m unittest discover -s tests -v
+
       - name: Build package
         run: |
           python -m build

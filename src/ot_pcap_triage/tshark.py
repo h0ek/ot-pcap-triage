@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
@@ -37,7 +38,7 @@ class Tshark:
         limit: int | None = None,
         occurrence: str = "f",
     ) -> list[str]:
-        args = ["-r", str(pcap)]
+        args = ["-n", "-r", str(pcap)]
         if display_filter:
             args += ["-Y", display_filter]
         if limit:
@@ -45,7 +46,8 @@ class Tshark:
         args += [
             "-T", "fields",
             "-E", "header=y",
-            "-E", "separator=\t",
+            "-E", "separator=/t",
+            "-E", "quote=d",
             "-E", f"occurrence={occurrence}",
         ]
         for field in fields:
@@ -77,11 +79,7 @@ class Tshark:
         limit: int | None = None,
         occurrence: str = "f",
     ) -> list[dict[str, str]]:
-        args = self._field_args(pcap, fields, display_filter, limit, occurrence)
-        res = self.run(args, check=False)
-        if res.returncode != 0 or not res.stdout.strip():
-            return []
-        return [dict(row) for row in csv.DictReader(res.stdout.splitlines(), delimiter="\t")]
+        return list(self.iter_fields(pcap, fields, display_filter, occurrence, limit))
 
     def iter_fields(
         self,
@@ -89,92 +87,48 @@ class Tshark:
         fields: list[str],
         display_filter: str | None = None,
         occurrence: str = "f",
+        limit: int | None = None,
     ) -> Iterator[dict[str, str]]:
-        """Stream tshark -T fields output row-by-row.
-
-        This avoids holding all packet rows in memory for large PCAP files.
-        """
-        args = self._field_args(pcap, fields, display_filter, None, occurrence)
-        cmd = [self.tshark_bin] + args
+        cmd = [self.tshark_bin] + self._field_args(pcap, fields, display_filter, limit, occurrence)
         self.commands_used.append(cmd)
-
-        proc = subprocess.Popen(
-            cmd,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=1,
-        )
-        assert proc.stdout is not None
-
-        header_line = proc.stdout.readline()
-        if not header_line:
-            stderr = proc.stderr.read() if proc.stderr else ""
-            proc.wait()
-            if proc.returncode not in (0, None):
-                raise TsharkError(
-                    f"Command failed: {' '.join(cmd)}\n"
-                    f"Exit: {proc.returncode}\n"
-                    f"{stderr}"
-                )
-            return
-
-        headers = header_line.rstrip("\n").split("\t")
-        for line in proc.stdout:
-            values = line.rstrip("\n").split("\t")
-            if len(values) < len(headers):
-                values += [""] * (len(headers) - len(values))
-            elif len(values) > len(headers):
-                values = values[:len(headers)]
-            yield dict(zip(headers, values))
-
-        stderr = proc.stderr.read() if proc.stderr else ""
-        rc = proc.wait()
-        if rc != 0:
-            raise TsharkError(
-                f"Command failed: {' '.join(cmd)}\n"
-                f"Exit: {rc}\n"
-                f"{stderr}"
-            )
+        with tempfile.TemporaryFile(mode="w+t", encoding="utf-8", errors="replace") as stderr:
+            with subprocess.Popen(cmd, text=True, encoding="utf-8", errors="replace", stdout=subprocess.PIPE, stderr=stderr, bufsize=1) as proc:
+                try:
+                    assert proc.stdout is not None
+                    for row in csv.DictReader(proc.stdout, delimiter="\t"):
+                        yield dict(row)
+                    rc = proc.wait()
+                    if rc:
+                        stderr.seek(0)
+                        raise TsharkError(f"Command failed: {' '.join(cmd)}\nExit: {rc}\n{stderr.read(16000)}")
+                finally:
+                    if proc.poll() is None:
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait()
 
     def raw_protocol_hierarchy(self, pcap: Path) -> str:
-        res = self.run(["-r", str(pcap), "-q", "-z", "io,phs"], check=False)
+        res = self.run(["-n", "-r", str(pcap), "-q", "-z", "io,phs"])
         return (res.stdout or "") + (("\nSTDERR:\n" + res.stderr) if res.stderr else "")
 
     def count_filter(self, pcap: Path, display_filter: str) -> int:
-        return len(self.fields(pcap, ["frame.number"], display_filter=display_filter))
+        return sum(1 for _ in self.iter_fields(pcap, ["frame.number"], display_filter=display_filter))
 
-    def evidence_rows(
-        self,
-        pcap: Path,
-        display_filter: str,
-        max_rows: int,
-        extra_fields: list[str] | None = None,
-    ) -> list[dict[str, str]]:
+    def count_and_evidence(self, pcap, display_filter, max_rows, extra_fields=None):
         base = [
-            "frame.number",
-            "frame.time",
-            "frame.time_epoch",
-            "eth.src",
-            "eth.dst",
-            "ip.src",
-            "ip.dst",
-            "ipv6.src",
-            "ipv6.dst",
-            "tcp.srcport",
-            "tcp.dstport",
-            "udp.srcport",
-            "udp.dstport",
-            "tcp.stream",
-            "_ws.col.Protocol",
-            "_ws.col.Info",
-            "frame.protocols",
+            "frame.number", "frame.time", "frame.time_epoch", "eth.src", "eth.dst",
+            "ip.src", "ip.dst", "ipv6.src", "ipv6.dst", "tcp.srcport", "tcp.dstport",
+            "udp.srcport", "udp.dstport", "tcp.stream", "_ws.col.Protocol", "frame.protocols",
         ]
+        count, samples = 0, []
+        for row in self.iter_fields(pcap, base + (extra_fields or []), display_filter):
+            count += 1
+            if len(samples) < max_rows:
+                samples.append(row)
+        return count, samples
 
-        rows = self.fields(
-            pcap,
-            base + (extra_fields or []),
-            display_filter=display_filter,
-            limit=None,
-        )
-        return rows[:max_rows]
+    def evidence_rows(self, pcap, display_filter, max_rows, extra_fields=None):
+        return self.count_and_evidence(pcap, display_filter, max_rows, extra_fields)[1]

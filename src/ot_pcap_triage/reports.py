@@ -4,6 +4,7 @@ import csv
 import ipaddress
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
@@ -11,8 +12,9 @@ from .metadata import save_yaml
 
 
 INDUSTRIAL_TOKENS = (
-    "s7", "cotp", "modbus", "cip", "profinet", "opc", "dnp3", "iec", "bacnet",
-    "fins", "ethercat", "hart", "ads", "ams", "slmp", "melsec", "srtp",
+    "s7", "modbus", "cip", "profinet", "opc", "dnp3", "iec", "bacnet",
+    "fins", "ethercat", "hart", "ads", "ams", "slmp", "melsec", "ge srtp",
+    "goose", "mms", "sampled values", "powerlink", "knx", "codesys", "pccc", "mqtt", "amqp", "mrp", "prp", "hsr", "ge egd", "tristation",
 )
 
 
@@ -535,10 +537,12 @@ def render_reports(output_dir, summary, findings, suggested_metadata, protocol_h
 
     env = Environment(
         loader=PackageLoader("ot_pcap_triage", "templates"),
-        autoescape=select_autoescape(["html", "xml"]),
+        autoescape=select_autoescape(["html", "html.j2", "xml", "md.j2"]),
         trim_blocks=True,
         lstrip_blocks=True,
     )
+
+    env.filters["safe_http_url"] = lambda value: bool(value and urlsplit(str(value)).scheme in {"http", "https"} and urlsplit(str(value)).netloc)
 
     timeline_chart = _render_timeline_chart(output_dir, summary)
     if timeline_chart:

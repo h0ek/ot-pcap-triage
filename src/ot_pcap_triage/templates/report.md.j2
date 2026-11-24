@@ -79,6 +79,16 @@ No MITRE ATT&CK for ICS context generated.
 No risky observations generated.
 {% endif %}
 
+## Decoded Protocol Layers
+
+Frame counts may overlap. Port-only candidates are listed separately.
+
+| Layer | Frames |
+|---|---:|
+{% for item in summary.decoded_protocol_layers %}
+| {{ item.name }} | {{ item.frames }} |
+{% endfor %}
+
 ## Observed Industrial Protocols
 
 {% if summary.observed_industrial_protocols %}

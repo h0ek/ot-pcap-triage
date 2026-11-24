@@ -122,7 +122,7 @@ def generate_suggested_metadata(summary):
     plc = {}
     ot_ports = {"502", "102", "44818", "4840", "20000", "2404", "47808", "9600", "48898", "18245", "5094"}
     for item in conv:
-        if str(item.get("dst_port", "")) in ot_ports and _usable_ip(item.get("dst_ip")):
+        if str(item.get("dst_port", "")) in ot_ports and item.get("protocol") in {"UNKNOWN", "COTP", "TPKT", "S7/COTP", "S7comm Plus", "Modbus", "EtherNet/IP", "CIP Safety", "OPC UA", "DNP3", "IEC104", "BACnet", "FINS", "Beckhoff ADS", "GE SRTP", "HART-IP"} and _usable_ip(item.get("dst_ip")):
             ip = item["dst_ip"]
             plc[ip] = {
                 "ip": ip,

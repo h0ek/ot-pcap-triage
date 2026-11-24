@@ -91,7 +91,9 @@ Custom output directory:
 ot-pcap-triage capture.pcapng -o output/test1
 ```
 
-More evidence frames per rule:
+Use a new or empty output directory for every run. A TShark command failure stops analysis instead of reporting zero matches.
+
+More evidence frames per rule (sampling only; detection counts are independent):
 
 ```bash
 ot-pcap-triage capture.pcapng --max-evidence 25
@@ -283,7 +285,8 @@ The catalog is used for enrichment only:
 
 - it helps label possible industrial/building/utility protocol candidates;
 - it does not automatically create high-severity findings;
-- matches based only on ports are shown as candidates;
+- matches based only on TCP/UDP ports are shown as candidates for undecoded or generic encrypted/transport traffic;
+- decoded protocol layers are reported separately, and protocol ecosystem hints are not proof of the device vendor;
 - analyst validation is required.
 
 The report section `Extended Protocol Candidates` shows catalog matches with:
@@ -393,7 +396,7 @@ Main packet aggregation is streamed from `tshark` line-by-line instead of loadin
 
 This reduces Python memory usage for large PCAP files.
 
-The tool still runs additional `tshark` passes for rule evidence and counts, so large files can still take time.
+The tool aggregates protocol layers, public communication and PLC talker observations in a streaming pass. Other rules use one streaming pass per filter, retaining only the requested evidence samples while counting all matches. Timeline aggregation is bounded, but endpoint and conversation cardinality still affects memory use. Frame-number filters for sampled observations select only the reported evidence. Large captures can still take time.
 
 Temporary partial files are written to:
 

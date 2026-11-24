@@ -22,7 +22,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y tshark wireshark-common graphviz p7zip-full
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark wireshark-common graphviz p7zip-full
 
       - name: Install package
         run: |
@@ -37,3 +37,6 @@ jobs:
         run: |
           ot-pcap-triage --help
           ot-pcap-triage --check-deps
+
+      - name: Run regression tests
+        run: python -B -m unittest discover -s tests -v

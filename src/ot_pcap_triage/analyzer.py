@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
+from collections import Counter, defaultdict
+from importlib.resources import files
+import yaml
 from datetime import datetime, timezone
+from math import isfinite
 from pathlib import Path
 
 from .metadata import generate_suggested_metadata, metadata_allowed_plc_talkers, metadata_expected_protocols
@@ -28,6 +31,9 @@ PACKET_FIELDS = [
     "_ws.col.Protocol",
     "frame.protocols",
     "vlan.id",
+    "tcp.stream",
+    "dns.flags.response",
+    "ntp.flags.mode",
 ]
 
 
@@ -43,71 +49,51 @@ def _dur(seconds):
     return f"{seconds / 3600:.2f}h"
 
 
+GENERIC = {"frame", "eth", "ethertype", "ip", "ipv6", "tcp", "udp", "data", "vlan", "sll", "sll2", "null", "loop", "raw", "tcp.segments", "tcp.segment", "_ws.malformed", "_ws.short", "eth.trailer", "ipv6.hopopts", "ipv6.fraghdr", "ipv6.routing"}
+
+PROTOCOL_LABELS = {
+    "modbus": "Modbus", "mbtcp": "Modbus", "s7comm": "S7/COTP", "s7comm_plus": "S7comm Plus",
+    "cotp": "COTP", "tpkt": "TPKT", "enip": "EtherNet/IP", "cip": "EtherNet/IP", "cipsafety": "CIP Safety",
+    "opcua": "OPC UA", "iec60870_104": "IEC104", "iec104": "IEC104", "pn_rt": "PROFINET", "pn_dcp": "PROFINET DCP",
+    "pn_io": "PROFINET IO", "pn_ptcp": "PROFINET PTCP", "ptcp": "PROFINET PTCP", "ecat": "EtherCAT", "ethercat": "EtherCAT", "ecat_mailbox": "EtherCAT",
+    "omron": "FINS", "ams": "Beckhoff ADS", "ams_tcp": "Beckhoff ADS", "gesrtp": "GE SRTP", "egd": "GE EGD", "epl": "POWERLINK",
+    "bacapp": "BACnet", "bvlc": "BACnet", "hart_ip": "HART-IP", "hartip": "HART-IP", "knxnetip": "KNXnet/IP",
+    "pcomtcp": "PCOM", "pcomascii": "PCOM", "pcombinary": "PCOM", "optommp": "OptoMMP",
+    "smb2": "SMB2/3", "smb": "SMBv1", "nbdgm": "NBDGM/Browser", "udpencap": "IPsec/UDP-encap",
+}
+
+
+def _tokens(row):
+    return set(str(row.get("frame.protocols") or "").lower().split(":")) - {""}
+
+
+def _transport(row):
+    if row.get("tcp.srcport") or row.get("tcp.dstport"):
+        return "tcp"
+    if row.get("udp.srcport") or row.get("udp.dstport"):
+        return "udp"
+    return ""
+
+
 def _proto(row):
-    src_port = first_nonempty(row.get("tcp.srcport"), row.get("udp.srcport"))
-    dst_port = first_nonempty(row.get("tcp.dstport"), row.get("udp.dstport"))
-    ports = {src_port, dst_port}
-
-    by_port = {
-        "67": "DHCP",
-        "68": "DHCP",
-        "137": "NBNS",
-        "138": "NBDGM/Browser",
-        "139": "NBSS",
-        "445": "SMB",
-        "53": "DNS",
-        "123": "NTP",
-        "161": "SNMP",
-        "162": "SNMPTRAP",
-        "1947": "Sentinel/HASP",
-        "3702": "WS-Discovery",
-        "502": "Modbus",
-        "102": "S7/COTP",
-        "44818": "EtherNet/IP",
-        "4840": "OPC UA",
-        "20000": "DNP3",
-        "2404": "IEC104",
-        "47808": "BACnet",
-        "9600": "FINS",
-        "48898": "Beckhoff ADS",
-        "18245": "GE SRTP",
-        "5094": "HART-IP",
-        "1194": "OPENVPN",
-        "500": "ISAKMP",
-        "4500": "IPsec/UDP-encap",
-    }
-    for port in ports:
-        if port in by_port:
-            return by_port[port]
-
-    protocols = str(row.get("frame.protocols") or "").split(":")
-    preferred = [
-        "arp", "icmp", "icmpv6", "dhcp", "dns", "nbns", "nbdgm", "smb", "smb2",
-        "llmnr", "mdns", "ssdp", "http", "tls", "ssl", "ftp", "telnet",
-        "tftp", "snmp", "ntp", "ldap", "kerberos", "modbus", "mbtcp",
-        "s7comm", "s7comm_plus", "cotp", "tpkt", "pn_rt", "pn_dcp", "ptcp",
-        "enip", "cip", "opcua", "dnp3", "iec104", "bacnet", "ecat", "fins",
-        "ams", "srtp", "lldp", "cdp", "stp", "rstp", "mstp", "vrrp", "hsrp",
-        "ospf", "syslog", "openvpn", "isakmp", "esp", "udpencap",
-    ]
-
-    for protocol in reversed(protocols):
-        if protocol in preferred:
-            if protocol in {"cotp", "tpkt", "s7comm", "s7comm_plus"}:
-                return "S7/COTP"
-            if protocol == "mbtcp":
-                return "Modbus"
-            return protocol.upper()
-
-    col = row.get("_ws.col.Protocol")
-    if col and col != "UNKNOWN":
+    layers = str(row.get("frame.protocols") or "").lower().split(":")
+    for protocol in reversed(layers):
+        if protocol and protocol not in GENERIC:
+            return PROTOCOL_LABELS.get(protocol, protocol.upper())
+    col = str(row.get("_ws.col.Protocol") or "").strip()
+    if col and col.upper() not in {"TCP", "UDP", "IP", "IPV6", "ETH", "ETHERNET", "UNKNOWN", "DATA", "MALFORMED PACKET"}:
         return col
-
-    for protocol in reversed(protocols):
-        if protocol and protocol not in {"frame", "eth", "ethertype", "ip", "ipv6", "tcp", "udp", "data"}:
-            return protocol.upper()
-
     return "UNKNOWN"
+
+
+def _frame_filter(rows):
+    frames = sorted({int(row["frame.number"]) for row in rows if str(row.get("frame.number", "")).isdigit()})
+    return " || ".join(f"frame.number == {number}" for number in frames)
+
+
+def _candidate_ports():
+    catalog = yaml.safe_load(files("ot_pcap_triage").joinpath("protocol_catalog.yml").read_text(encoding="utf-8"))["protocols"]
+    return {tuple(str(port).split("/", 1)) for data in catalog.values() if data.get("category") in {"industrial", "utility", "industrial integration", "instrumentation", "building automation", "safety"} for port in data.get("ports", [])}
 
 
 def _ev(row):
@@ -116,6 +102,7 @@ def _ev(row):
         "timestamp": row.get("frame.time", ""),
         "timestamp_epoch": row.get("frame.time_epoch", ""),
         "protocol": _proto(row),
+        "transport": _transport(row),
         "src_ip": first_nonempty(row.get("ip.src"), row.get("ipv6.src")),
         "src_mac": row.get("eth.src", ""),
         "src_port": first_nonempty(row.get("tcp.srcport"), row.get("udp.srcport")),
@@ -123,7 +110,7 @@ def _ev(row):
         "dst_mac": row.get("eth.dst", ""),
         "dst_port": first_nonempty(row.get("tcp.dstport"), row.get("udp.dstport")),
         "tcp_stream": row.get("tcp.stream", ""),
-        "info": row.get("_ws.col.Info", ""),
+        "info": "",
     }
 
 
@@ -160,43 +147,8 @@ def _flow_key(row):
         first_nonempty(row.get("tcp.srcport"), row.get("udp.srcport")),
         first_nonempty(row.get("tcp.dstport"), row.get("udp.dstport")),
         _proto(row),
+        _transport(row),
     )
-
-
-def _private_dst_filter(field: str = "ip.dst") -> str:
-    return (
-        f"!({field} == 10.0.0.0/8) && "
-        f"!({field} == 172.16.0.0/12) && "
-        f"!({field} == 192.168.0.0/16) && "
-        f"!({field} == 127.0.0.0/8) && "
-        f"!({field} == 169.254.0.0/16) && "
-        f"!({field} == 224.0.0.0/4) && "
-        f"!({field} == 0.0.0.0) && "
-        f"!({field} == 255.255.255.255)"
-    )
-
-
-def _private_any_filter() -> str:
-    return (
-        "ip && "
-        "!(ip.addr == 10.0.0.0/8) && "
-        "!(ip.addr == 172.16.0.0/12) && "
-        "!(ip.addr == 192.168.0.0/16) && "
-        "!(ip.addr == 127.0.0.0/8) && "
-        "!(ip.addr == 169.254.0.0/16) && "
-        "!(ip.addr == 224.0.0.0/4) && "
-        "!(ip.addr == 0.0.0.0) && "
-        "!(ip.addr == 255.255.255.255)"
-    )
-
-
-def _dynamic_evidence(tshark, pcap: Path, display_filter: str, max_evidence: int):
-    try:
-        rows = tshark.evidence_rows(pcap, display_filter, max_evidence)
-        return rows, display_filter
-    except Exception:
-        # Dynamic helper should never break the whole report.
-        return [], display_filter
 
 
 def _write_partial(work_dir: Path | None, name: str, data):
@@ -208,6 +160,8 @@ def _write_partial(work_dir: Path | None, name: str, data):
 
 def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path | None = None):
     metadata = metadata or {}
+    if max_evidence < 1:
+        raise ValueError("max_evidence must be at least 1")
 
     frame_count = 0
     total_bytes = 0
@@ -217,7 +171,25 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
     conv = Counter()
     conv_bytes = Counter()
     protos = Counter()
+    decoded_layers = Counter()
     vlans = set()
+    allowed = metadata_allowed_plc_talkers(metadata)
+    candidate_ports = _candidate_ports() if allowed else set()
+    decoded_counts = Counter()
+    decoded_samples = defaultdict(list)
+    dynamic_counts = Counter()
+    dynamic_samples = defaultdict(list)
+    rules_by_token = defaultdict(list)
+    for rule in INDUSTRIAL_RULES:
+        for token in rule["tokens"]:
+            rules_by_token[token].append(rule["id"])
+    industrial_ids = {rule["id"] for rule in INDUSTRIAL_RULES if rule["category"] == "industrial_protocol" and rule["name"] not in {"mqtt", "amqp"}}
+
+    def record(key, row, counts, samples):
+        counts[key] += 1
+        if len(samples[key]) < max_evidence:
+            samples[key].append(row)
+
 
     print("[*]   streaming packet aggregation...")
 
@@ -226,12 +198,32 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
         total_bytes += safe_int(row.get("frame.len"))
 
         epoch = safe_float(row.get("frame.time_epoch"))
-        if epoch:
+        if epoch and isfinite(epoch):
             first = epoch if first is None else min(first, epoch)
             last = epoch if last is None else max(last, epoch)
 
         proto = _proto(row)
         protos[proto] += 1
+        tokens = _tokens(row)
+        decoded_layers.update(tokens - GENERIC)
+        matched = {rid for token in tokens for rid in rules_by_token.get(token, [])}
+        for rid in matched:
+            record(rid, row, decoded_counts, decoded_samples)
+        src = first_nonempty(row.get("ip.src"), row.get("ipv6.src"))
+        dst = first_nonempty(row.get("ip.dst"), row.get("ipv6.dst"))
+        if any(is_public_ip(row.get(field)) for field in ("ip.src", "ip.dst", "ipv6.src", "ipv6.dst")):
+            record("public_ip", row, dynamic_counts, dynamic_samples)
+        if is_public_ip(dst) and "dns" in tokens and str(row.get("dns.flags.response", "")).lower() in {"0", "false"}:
+            record("public_dns", row, dynamic_counts, dynamic_samples)
+        if is_public_ip(dst) and "ntp" in tokens and row.get("ntp.flags.mode") == "3":
+            record("public_ntp", row, dynamic_counts, dynamic_samples)
+        transport = _transport(row)
+        ports = {first_nonempty(row.get("tcp.srcport"), row.get("udp.srcport")), first_nonempty(row.get("tcp.dstport"), row.get("udp.dstport"))}
+        decoded_industrial = bool(matched & industrial_ids)
+        possible_industrial = proto in {"UNKNOWN", "COTP", "TPKT"} and any((port, transport) in candidate_ports for port in ports)
+        if (decoded_industrial or possible_industrial) and src and dst and ((src in allowed and dst not in allowed[src]) or (dst in allowed and src not in allowed[dst])):
+            record("plc_decoded" if decoded_industrial else "plc_candidate", row, dynamic_counts, dynamic_samples)
+
 
         if row.get("vlan.id"):
             for vlan in str(row["vlan.id"]).split(","):
@@ -293,11 +285,12 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
             "src_port": sport,
             "dst_port": dport,
             "protocol": proto,
+            "transport": transport,
             "packets": count,
-            "bytes": conv_bytes[(src, dst, sport, dport, proto)],
+            "bytes": conv_bytes[(src, dst, sport, dport, proto, transport)],
             "external": is_public_ip(src) or is_public_ip(dst),
         }
-        for (src, dst, sport, dport, proto), count in conv.most_common()
+        for (src, dst, sport, dport, proto, transport), count in conv.most_common()
     ]
 
     protocol_rows = [
@@ -319,10 +312,12 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
     expected = metadata_expected_protocols(metadata)
 
     print("[*]   running rule filters...")
-    for idx, (rule, group) in enumerate([(r, "core") for r in CORE_RULES] + [(r, "industrial") for r in INDUSTRIAL_RULES], start=1):
+    for idx, (rule, group) in enumerate([(r, "core") for r in CORE_RULES] + [(r, "industrial" if r["category"] == "industrial_protocol" else "infrastructure") for r in INDUSTRIAL_RULES], start=1):
         print(f"[*]     rule {idx}: {rule['id']}")
-        evidence = tshark.evidence_rows(pcap, rule["filter"], max_evidence)
-        count = tshark.count_filter(pcap, rule["filter"]) if evidence else 0
+        if "tokens" in rule:
+            count, evidence = decoded_counts[rule["id"]], decoded_samples[rule["id"]]
+        else:
+            count, evidence = tshark.count_and_evidence(pcap, rule["filter"], max_evidence)
 
         result = {
             "id": rule["id"],
@@ -331,6 +326,7 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
             "filter": rule["filter"],
             "count": count,
             "group": group,
+            "confidence": "dissector-confirmed" if "tokens" in rule else "filter match",
         }
         rule_results.append(result)
         _write_partial(work_dir, "partial_rule_results.json", rule_results)
@@ -355,61 +351,31 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
             reason = f"{rule['title']} but this protocol is not listed in expected_protocols."
 
         if severity != "info" or status == "candidate":
-            findings.append(_finding(rule, pcap, evidence, rule["filter"], status=status, severity=severity, reason=reason))
+            findings.append(_finding(rule, pcap, evidence, _frame_filter(evidence) if "tokens" in rule else rule["filter"], status=status, severity=severity, reason=reason))
+            findings[-1]["match_count"] = count
 
-    # Dynamic findings with real frame evidence.
-    public_ip_filter = _private_any_filter()
-    public_ip_evidence, public_ip_filter = _dynamic_evidence(tshark, pcap, public_ip_filter, max_evidence)
-    if public_ip_evidence:
-        findings.append(_finding({
-            "id": "OT-NET-PUBLIC-IP",
-            "title": "Public IP communication observed",
-            "severity": "medium",
-            "category": "external_communication",
-            "reason": "Communication with public IP addresses was observed.",
-            "recommendation": "Confirm whether this external communication is approved.",
-        }, pcap, public_ip_evidence, public_ip_filter, conf="high"))
-
-    public_dns_filter = f"dns && {_private_dst_filter('ip.dst')}"
-    public_dns_evidence, public_dns_filter = _dynamic_evidence(tshark, pcap, public_dns_filter, max_evidence)
-    if public_dns_evidence:
-        findings.append(_finding({
-            "id": "OT-NET-PUBLIC-DNS",
-            "title": "Public DNS resolver used",
-            "severity": "medium",
-            "category": "external_communication",
-            "reason": "DNS traffic to a public IP address was observed.",
-            "recommendation": "Confirm whether public DNS is approved. Prefer controlled internal resolvers for OT.",
-        }, pcap, public_dns_evidence, public_dns_filter, conf="high"))
-
-    public_ntp_filter = f"ntp && {_private_dst_filter('ip.dst')}"
-    public_ntp_evidence, public_ntp_filter = _dynamic_evidence(tshark, pcap, public_ntp_filter, max_evidence)
-    if public_ntp_evidence:
-        findings.append(_finding({
-            "id": "OT-NET-PUBLIC-NTP",
-            "title": "Public NTP server used",
-            "severity": "medium",
-            "category": "external_communication",
-            "reason": "NTP traffic to a public IP address was observed.",
-            "recommendation": "Confirm whether public NTP is approved. Prefer controlled internal time sources for OT.",
-        }, pcap, public_ntp_evidence, public_ntp_filter, conf="high"))
+    for key, rule_id, title, reason, recommendation in (
+        ("public_ip", "OT-NET-PUBLIC-IP", "Public IP communication observed", "Communication with a globally routable unicast IP was observed.", "Confirm whether this external communication is approved."),
+        ("public_dns", "OT-NET-PUBLIC-DNS", "Public DNS resolver used", "A decoded DNS query targeted a public IP.", "Prefer controlled internal resolvers for OT."),
+        ("public_ntp", "OT-NET-PUBLIC-NTP", "Public NTP server used", "A decoded NTP client request targeted a public IP.", "Prefer controlled internal time sources for OT."),
+    ):
+        evidence = dynamic_samples[key]
+        if evidence:
+            finding = _finding({"id": rule_id, "title": title, "severity": "medium", "category": "external_communication", "reason": reason, "recommendation": recommendation}, pcap, evidence, _frame_filter(evidence), conf="high")
+            finding["match_count"] = dynamic_counts[key]
+            findings.append(finding)
 
     vpn_filter = "openvpn || isakmp || esp || udpencap || udp.port == 1194 || udp.port == 500 || udp.port == 4500"
-    vpn_evidence, vpn_filter = _dynamic_evidence(tshark, pcap, vpn_filter, max_evidence)
+    vpn_count, vpn_evidence = tshark.count_and_evidence(pcap, vpn_filter, max_evidence)
     if vpn_evidence:
-        findings.append(_finding({
-            "id": "OT-NET-VPN-TRAFFIC",
-            "title": "VPN/IPsec/OpenVPN-like traffic observed",
-            "severity": "medium",
-            "category": "remote_access",
-            "reason": "VPN/IPsec/OpenVPN-like traffic was observed.",
-            "recommendation": "Confirm whether this is an approved remote access path and whether it is properly controlled/logged.",
-        }, pcap, vpn_evidence, vpn_filter, conf="medium"))
+        finding = _finding({"id": "OT-NET-VPN-TRAFFIC", "title": "VPN/IPsec/OpenVPN-like traffic observed", "severity": "medium", "category": "remote_access", "reason": "VPN protocol or common VPN port matched.", "recommendation": "Confirm whether this is an approved remote access path."}, pcap, vpn_evidence, vpn_filter, conf="medium")
+        finding["match_count"] = vpn_count
+        findings.append(finding)
 
     sensitive = []
     print("[*]   checking sensitive/plaintext indicators...")
     for sr in SENSITIVE_RULES:
-        rs = tshark.evidence_rows(pcap, sr["filter"], max_evidence, extra_fields=sr.get("fields", []))
+        count, rs = tshark.count_and_evidence(pcap, sr["filter"], max_evidence, extra_fields=sr.get("fields", []))
         for row in rs:
             sensitive.append({
                 "rule_id": sr["id"],
@@ -420,34 +386,21 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
                 "wireshark_filter": f"frame.number == {row.get('frame.number')}" if row.get("frame.number") else sr["filter"],
             })
         if rs:
-            findings.append(_finding(sr, pcap, rs, sr["filter"], status="confirmed_by_rule", conf="high", owner=False))
+            findings.append(_finding(sr, pcap, rs, sr["filter"], status="confirmed_by_rule" if sr["id"] in {"OT-SENSITIVE-FTP-PASS", "OT-SENSITIVE-SNMP-COMMUNITY"} else "candidate", conf="high", owner=True))
+            findings[-1]["match_count"] = count
 
-    allowed = metadata_allowed_plc_talkers(metadata)
-    if allowed:
-        known_plcs = set(allowed.keys())
-        industrial_filter = " || ".join(rule["filter"] for rule in INDUSTRIAL_RULES[:15])
-        industrial_rows = tshark.evidence_rows(pcap, industrial_filter, max_evidence * 20)
-        unexpected = []
-        for row in industrial_rows:
-            src = first_nonempty(row.get("ip.src"), row.get("ipv6.src"))
-            dst = first_nonempty(row.get("ip.dst"), row.get("ipv6.dst"))
-            for plc in known_plcs:
-                if dst == plc and src and src not in allowed.get(plc, set()):
-                    unexpected.append(row)
-                elif src == plc and dst and dst not in allowed.get(plc, set()):
-                    unexpected.append(row)
-            if len(unexpected) >= max_evidence:
-                break
-
-        if unexpected:
-            findings.append(_finding({
-                "id": "OT-ICS-UNEXPECTED-PLC-TALKER",
-                "title": "Unexpected host communicating with known PLC/controller",
-                "severity": "medium",
-                "category": "expected_vs_observed",
-                "reason": "Industrial traffic involving a known PLC/controller was observed from a host not listed as an allowed PLC talker in metadata.",
-                "recommendation": "Validate the source host role. Restrict direct PLC communication to approved HMI/SCADA/engineering systems.",
-            }, pcap, unexpected, industrial_filter, conf="high"))
+    for key, confidence in (("plc_decoded", "high"), ("plc_candidate", "medium")):
+        evidence = dynamic_samples[key]
+        if evidence:
+            finding = _finding({
+                "id": "OT-ICS-UNEXPECTED-PLC-TALKER" if key == "plc_decoded" else "OT-ICS-UNEXPECTED-PLC-TALKER-CANDIDATE",
+                "title": "Unexpected host communicating with known PLC/controller" if key == "plc_decoded" else "Possible unexpected PLC/controller communication (port candidate)",
+                "severity": "medium", "category": "expected_vs_observed",
+                "reason": "Traffic involving a known controller and a host outside its approved talker list was observed. Protocol identity is based on " + ("decoded layers." if key == "plc_decoded" else "a matching transport port only."),
+                "recommendation": "Validate host roles and restrict controller communication to approved systems.",
+            }, pcap, evidence, _frame_filter(evidence), conf=confidence)
+            finding["match_count"] = dynamic_counts[key]
+            findings.append(finding)
 
     quality = {
         "duration_seconds": duration,
@@ -471,8 +424,8 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
             "file": pcap.name,
             "path": str(pcap),
             "sha256": sha256_file(pcap),
-            "first_packet_time": _iso(first) if first and last and duration > 0 else "Timestamp unavailable/zeroed",
-            "last_packet_time": _iso(last) if first and last and duration > 0 else "Timestamp unavailable/zeroed",
+            "first_packet_time": _iso(first) if first is not None else "Timestamp unavailable/zeroed",
+            "last_packet_time": _iso(last) if last is not None else "Timestamp unavailable/zeroed",
             "duration_seconds": duration,
             "duration_human": _dur(duration) if first and last and duration > 0 else "Unknown",
             "frames": frame_count,
@@ -488,6 +441,7 @@ def analyze_pcap(pcap: Path, metadata, tshark, max_evidence=10, work_dir: Path |
         "endpoints": endpoint_rows,
         "conversations": conversation_rows,
         "protocols": protocol_rows,
+        "decoded_protocol_layers": [{"name": name, "frames": count} for name, count in decoded_layers.most_common()],
         "rule_results": rule_results,
         "sensitive_hits_redacted": sensitive,
         "findings_count": len(findings),
